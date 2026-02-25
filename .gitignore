@@ -1,7 +1,5 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 
@@ -9,11 +7,23 @@
 /coverage
 
 # next.js
-/.next/
+.next/
 /out/
 
 # production
 /build
+
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# vector stores
+chroma_data/
+uploads/
+chats/
 
 # misc
 .DS_Store
