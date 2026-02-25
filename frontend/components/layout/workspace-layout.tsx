@@ -3,12 +3,13 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
 import { motion } from "motion/react";
-import { PanelLeft, Database } from "lucide-react";
+import { PanelLeft, Database, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { type PanelImperativeHandle } from "react-resizable-panels";
 import MarkdownEditor from "@/components/editor/markdown-editor";
 import ChatPanel from "@/components/chat/chat-panel";
 import DocumentDrawer from "@/components/sidebar/document-drawer";
@@ -32,6 +33,18 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
   const [editorContent, setEditorContent] = useState("");
   const [viewMode, setViewMode] = useState<"research" | "reader" | "database">("research");
   const [readerPdfName, setReaderPdfName] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(true);
+  const chatPanelRef = useRef<PanelImperativeHandle>(null);
+
+  const toggleChat = useCallback(() => {
+    const panel = chatPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.resize("350px");
+    } else {
+      panel.collapse();
+    }
+  }, []);
 
   // Notes state
   const [notes, setNotes] = useState<NoteFile[]>([]);
@@ -291,15 +304,15 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
   return (
     <div className="h-screen w-screen overflow-hidden relative">
       {/* Header */}
-      <div className="flex items-center h-10 px-3 border-b border-thin border-zinc-200 bg-white/80 backdrop-blur-md z-50 relative">
+      <div className="flex items-center h-12 px-3 border-b border-thin border-zinc-200 bg-white/80 backdrop-blur-md z-50 relative">
         <motion.button
           whileTap={{ scale: 0.98 }}
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex items-center justify-center h-7 w-7 rounded-md hover:bg-zinc-100 transition-colors duration-150"
+          className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-zinc-100 transition-colors duration-150"
         >
-          <PanelLeft className="h-4 w-4 text-muted-foreground" />
+          <PanelLeft className="h-5 w-5 text-muted-foreground" />
         </motion.button>
-        <span className="ml-2 text-sm font-medium text-foreground">
+        <span className="ml-2 text-base font-medium text-foreground">
           Origami
         </span>
         <div className="ml-auto">
@@ -308,19 +321,19 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
             onClick={() =>
               setViewMode(viewMode === "database" ? "research" : "database")
             }
-            className={`flex items-center justify-center h-7 w-7 rounded-md transition-colors duration-150 ${
+            className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors duration-150 ${
               viewMode === "database"
                 ? "bg-zinc-200 text-foreground"
                 : "hover:bg-zinc-100 text-muted-foreground"
             }`}
           >
-            <Database className="h-4 w-4" />
+            <Database className="h-5 w-5" />
           </motion.button>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="h-[calc(100vh-2.5rem)] relative">
+      <div className="h-[calc(100vh-3rem)] relative">
         {/* Document drawer overlay */}
         <AnimatePresence>
           {sidebarOpen && (
@@ -378,8 +391,15 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
 
           <ResizableHandle className="w-px bg-zinc-200 hover:bg-zinc-300 transition-colors duration-150" />
 
-          {/* Right: Chat */}
-          <ResizablePanel defaultSize={45} minSize={30}>
+          {/* Right: Chat (collapsible) */}
+          <ResizablePanel
+            defaultSize={45}
+            minSize="350px"
+            collapsible
+            collapsedSize={0}
+            panelRef={chatPanelRef}
+            onResize={(size) => setChatOpen(size.asPercentage > 0)}
+          >
             <ChatPanel
               currentNote={debouncedContent}
               chatId={chatId}
@@ -390,6 +410,22 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
             />
           </ResizablePanel>
         </ResizablePanelGroup>
+
+        {/* Chat pull tab */}
+        <motion.button
+          onClick={toggleChat}
+          initial={false}
+          animate={{
+            right: chatOpen ? -1 : 0,
+            opacity: chatOpen ? 0 : 1,
+          }}
+          whileHover={{ width: 36 }}
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+          className="absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-7 h-14 rounded-l-lg bg-zinc-100 border border-r-0 border-zinc-200 text-muted-foreground hover:text-foreground hover:bg-zinc-200 transition-colors cursor-pointer"
+          style={{ pointerEvents: chatOpen ? "none" : "auto" }}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </motion.button>
       </div>
     </div>
   );

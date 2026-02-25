@@ -139,6 +139,13 @@
 .w-md-editor-toolbar {
   border-radius: 0 !important;
   border-bottom: 0.5px solid #e4e4e7 !important;
+  padding-left: 0.5rem !important;
+}
+.w-md-editor-text {
+  padding-left: 0.75rem !important;
+}
+.w-md-editor .wmde-markdown {
+  padding-left: 0.75rem !important;
 }
 .w-md-editor-content,
 .w-md-editor-bar {

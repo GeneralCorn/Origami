@@ -69,7 +69,7 @@ export default function MarkdownEditor({
   return (
     <div className="h-full flex flex-col" data-color-mode="light">
       {/* Title input */}
-      <div className="flex items-center h-10 px-4 border-b border-thin border-zinc-200 shrink-0">
+      <div className="flex items-center h-10 px-3 border-b border-thin border-zinc-200 shrink-0">
         <input
           type="text"
           value={title}
