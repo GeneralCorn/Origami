@@ -13,9 +13,11 @@ Local AI research assistant. Upload PDFs, take Markdown notes, and chat with an 
 
 ## Gallery
 
-Themes:
+Light Theme:
 
 ![Lightmode](./images/lightmode.png)
+
+Dark Theme:
 
 ![Darkmode](./images/darkmode.png)
 
