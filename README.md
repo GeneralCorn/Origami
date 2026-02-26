@@ -6,7 +6,7 @@ Local AI research assistant. Upload PDFs, take Markdown notes, and chat with an 
 
 ## Prerequisites
 
-- [Ollama](https://ollama.com/) installed and running
+- [Ollama](https://ollama.com/) installed and running (any model)
 - [Bun](https://bun.sh/) (v1.3+)
 - [Python](https://www.python.org/) 3.13+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
