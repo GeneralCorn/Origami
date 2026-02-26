@@ -199,7 +199,7 @@ export default function ChatPanel({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between h-10 px-4 border-b border-thin border-zinc-200 shrink-0">
+      <div className="flex items-center justify-between h-10 px-4 border-b border-thin border-border shrink-0">
         <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
           Chat
         </span>
@@ -209,7 +209,7 @@ export default function ChatPanel({
             className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
               allowEdits
                 ? "bg-foreground text-background"
-                : "text-muted-foreground hover:bg-zinc-100"
+                : "text-muted-foreground hover:bg-accent"
             }`}
           >
             <Pencil className="h-3 w-3" />
@@ -220,7 +220,7 @@ export default function ChatPanel({
           <div className="relative">
             <button
               onClick={handleToggleDropdown}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-zinc-100 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               <span className="max-w-[100px] truncate">{currentChatTitle}</span>
               <ChevronDown className="h-3 w-3" />
@@ -232,15 +232,15 @@ export default function ChatPanel({
                   className="fixed inset-0 z-40"
                   onClick={() => setDropdownOpen(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-md border border-zinc-200 bg-white shadow-lg py-1">
+                <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-md border border-border bg-popover shadow-lg py-1">
                   <button
                     onClick={handleNewChat}
-                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-zinc-50 transition-colors"
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
                   >
                     <Plus className="h-3 w-3" />
                     New Chat
                   </button>
-                  <div className="border-t border-zinc-100 my-1" />
+                  <div className="border-t border-border/50 my-1" />
                   <div className="max-h-48 overflow-y-auto">
                     {chatList.length === 0 ? (
                       <p className="px-3 py-1.5 text-xs text-muted-foreground">
@@ -251,9 +251,9 @@ export default function ChatPanel({
                         <button
                           key={chat.id}
                           onClick={() => handleSelectChat(chat.id, chat.title)}
-                          className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-zinc-50 transition-colors ${
+                          className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent/50 transition-colors ${
                             chat.id === activeChatId
-                              ? "text-foreground font-medium bg-zinc-50"
+                              ? "text-foreground font-medium bg-accent/50"
                               : "text-muted-foreground"
                           }`}
                         >
@@ -280,7 +280,7 @@ export default function ChatPanel({
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-zinc-100">
+            <div className="divide-y divide-border/50">
               {messages.map((message) => (
                 <Message
                   key={message.id}
@@ -298,7 +298,7 @@ export default function ChatPanel({
       </div>
 
       {/* Input — pinned to bottom */}
-      <div className="border-t border-thin border-zinc-200 shrink-0">
+      <div className="border-t border-thin border-border shrink-0">
         <ChatInput onSend={handleSend} isLoading={isLoading} />
       </div>
     </div>

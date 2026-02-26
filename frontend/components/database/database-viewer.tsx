@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { fetchDocuments } from "@/lib/api/documents";
 import { fetchDocumentChunks } from "@/lib/api/documents";
+import { tagColor } from "@/lib/utils";
 import type { ChromaDocument, ChromaChunk } from "@/types";
 
 interface DatabaseViewerProps {
@@ -81,7 +82,7 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between h-10 px-4 border-b border-thin border-zinc-200 shrink-0">
+      <div className="flex items-center justify-between h-10 px-4 border-b border-thin border-border shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           {selectedDoc ? (
             <button
@@ -105,7 +106,7 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
         </div>
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-zinc-100 transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
           <ArrowLeft className="h-3 w-3" />
           <span>Research</span>
@@ -113,7 +114,7 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
       </div>
 
       {/* Search */}
-      <div className="flex items-center px-4 py-2 border-b border-thin border-zinc-100 shrink-0">
+      <div className="flex items-center px-4 py-2 border-b border-thin border-border/50 shrink-0">
         <Search className="h-3.5 w-3.5 text-muted-foreground mr-2" />
         <input
           type="text"
@@ -133,7 +134,7 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
-                className="h-8 rounded bg-zinc-100 animate-pulse"
+                className="h-8 rounded bg-muted animate-pulse"
               />
             ))}
           </div>
@@ -173,13 +174,16 @@ function DocumentTable({
 
   return (
     <table className="w-full text-xs">
-      <thead className="sticky top-0 bg-zinc-50/95 backdrop-blur-sm z-10">
-        <tr className="border-b border-zinc-200">
+      <thead className="sticky top-0 bg-muted/95 backdrop-blur-sm z-10">
+        <tr className="border-b border-border">
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
             Filename
           </th>
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
             File ID
+          </th>
+          <th className="text-left px-4 py-2 font-medium text-muted-foreground">
+            Tags
           </th>
           <th className="text-right px-4 py-2 font-medium text-muted-foreground">
             Chunks
@@ -192,7 +196,7 @@ function DocumentTable({
           <tr
             key={doc.file_id}
             onClick={() => onSelect(doc)}
-            className="border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer transition-colors group"
+            className="border-b border-border/50 hover:bg-accent/50 cursor-pointer transition-colors group"
           >
             <td className="px-4 py-2.5 font-medium">
               <div className="flex items-center gap-2">
@@ -202,6 +206,23 @@ function DocumentTable({
             </td>
             <td className="px-4 py-2.5 font-mono text-muted-foreground">
               {doc.file_id.slice(0, 8)}...
+            </td>
+            <td className="px-4 py-2.5">
+              <div className="flex flex-wrap gap-1">
+                {doc.tags?.length > 0
+                  ? doc.tags.map((tag) => {
+                      const colors = tagColor(tag);
+                      return (
+                        <span
+                          key={tag}
+                          className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${colors.bg} ${colors.text}`}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })
+                  : <span className="text-muted-foreground/40">—</span>}
+              </div>
             </td>
             <td className="px-4 py-2.5 text-right tabular-nums">
               {doc.chunk_count}
@@ -238,8 +259,8 @@ function ChunkTable({
 
   return (
     <table className="w-full text-xs">
-      <thead className="sticky top-0 bg-zinc-50/95 backdrop-blur-sm z-10">
-        <tr className="border-b border-zinc-200">
+      <thead className="sticky top-0 bg-muted/95 backdrop-blur-sm z-10">
+        <tr className="border-b border-border">
           <th className="text-left px-4 py-2 font-medium text-muted-foreground w-16">
             #
           </th>
@@ -255,7 +276,7 @@ function ChunkTable({
             <tr
               key={chunk.chunk_id}
               onClick={() => onToggle(chunk.chunk_id)}
-              className="border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer transition-colors align-top"
+              className="border-b border-border/50 hover:bg-accent/50 cursor-pointer transition-colors align-top"
             >
               <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                 {chunk.chunk_index}

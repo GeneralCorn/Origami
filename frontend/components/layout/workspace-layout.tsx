@@ -3,7 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { AnimatePresence } from "motion/react";
 import { motion } from "motion/react";
-import { PanelLeft, Database, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { PanelLeft, Database, MessageSquare, ChevronLeft, ChevronRight, Palette, Sun, Moon, Check } from "lucide-react";
+import { useTheme, type Theme } from "@/lib/theme";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -28,7 +29,15 @@ interface WorkspaceLayoutProps {
   chatId?: string;
 }
 
+const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "palenight", label: "Palenight", icon: Palette },
+];
+
 export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
+  const { theme, setTheme } = useTheme();
+  const [themeOpen, setThemeOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editorContent, setEditorContent] = useState("");
   const [viewMode, setViewMode] = useState<"research" | "reader" | "database">("research");
@@ -40,7 +49,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
     const panel = chatPanelRef.current;
     if (!panel) return;
     if (panel.isCollapsed()) {
-      panel.resize("350px");
+      panel.expand();
     } else {
       panel.collapse();
     }
@@ -304,18 +313,18 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
   return (
     <div className="h-screen w-screen overflow-hidden relative">
       {/* Header */}
-      <div className="flex items-center h-12 px-3 border-b border-thin border-zinc-200 bg-white/80 backdrop-blur-md z-50 relative">
+      <div className="flex items-center h-12 px-3 border-b border-thin border-border bg-background/80 backdrop-blur-md z-50 relative">
         <motion.button
           whileTap={{ scale: 0.98 }}
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-zinc-100 transition-colors duration-150"
+          className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent transition-colors duration-150"
         >
           <PanelLeft className="h-5 w-5 text-muted-foreground" />
         </motion.button>
         <span className="ml-2 text-base font-medium text-foreground">
           Origami
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() =>
@@ -323,12 +332,62 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
             }
             className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors duration-150 ${
               viewMode === "database"
-                ? "bg-zinc-200 text-foreground"
-                : "hover:bg-zinc-100 text-muted-foreground"
+                ? "bg-accent text-foreground"
+                : "hover:bg-accent text-muted-foreground"
             }`}
           >
             <Database className="h-5 w-5" />
           </motion.button>
+
+          {/* Theme switcher */}
+          <div className="relative">
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setThemeOpen(!themeOpen)}
+              className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+            >
+              {theme === "light" ? (
+                <Sun className="h-5 w-5" />
+              ) : theme === "dark" ? (
+                <Moon className="h-5 w-5" />
+              ) : (
+                <Palette className="h-5 w-5" />
+              )}
+            </motion.button>
+
+            {themeOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setThemeOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-border bg-popover shadow-lg py-1">
+                  {THEME_OPTIONS.map((opt) => {
+                    const Icon = opt.icon;
+                    const active = theme === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        onClick={() => {
+                          setTheme(opt.value);
+                          setThemeOpen(false);
+                        }}
+                        className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs transition-colors ${
+                          active
+                            ? "text-foreground font-medium bg-accent/50"
+                            : "text-muted-foreground hover:bg-accent/50"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        <span className="flex-1 text-left">{opt.label}</span>
+                        {active && <Check className="h-3 w-3" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -389,7 +448,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
             />
           </ResizablePanel>
 
-          <ResizableHandle className="w-px bg-zinc-200 hover:bg-zinc-300 transition-colors duration-150" />
+          <ResizableHandle className="w-px bg-border hover:bg-ring transition-colors duration-150" />
 
           {/* Right: Chat (collapsible) */}
           <ResizablePanel
@@ -421,7 +480,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
           }}
           whileHover={{ width: 36 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className="absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-7 h-14 rounded-l-lg bg-zinc-100 border border-r-0 border-zinc-200 text-muted-foreground hover:text-foreground hover:bg-zinc-200 transition-colors cursor-pointer"
+          className="absolute top-1/2 -translate-y-1/2 z-20 flex items-center justify-center w-7 h-14 rounded-l-lg bg-muted border border-r-0 border-border text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
           style={{ pointerEvents: chatOpen ? "none" : "auto" }}
         >
           <ChevronLeft className="h-4 w-4" />

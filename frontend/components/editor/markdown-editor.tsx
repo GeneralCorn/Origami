@@ -4,6 +4,7 @@ import { useCallback, useRef, useLayoutEffect } from "react";
 import dynamic from "next/dynamic";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import { useTheme } from "@/lib/theme";
 import "katex/dist/katex.min.css";
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
@@ -21,6 +22,7 @@ export default function MarkdownEditor({
   title,
   onTitleChange,
 }: MarkdownEditorProps) {
+  const { theme } = useTheme();
   const scrollRestore = useRef<{ el: HTMLTextAreaElement; top: number } | null>(
     null
   );
@@ -67,9 +69,9 @@ export default function MarkdownEditor({
   );
 
   return (
-    <div className="h-full flex flex-col" data-color-mode="light">
+    <div className="h-full flex flex-col" data-color-mode={theme === "light" ? "light" : "dark"}>
       {/* Title input */}
-      <div className="flex items-center h-10 px-3 border-b border-thin border-zinc-200 shrink-0">
+      <div className="flex items-center h-10 px-3 border-b border-thin border-border shrink-0">
         <input
           type="text"
           value={title}

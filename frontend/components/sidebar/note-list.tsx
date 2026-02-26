@@ -58,21 +58,21 @@ export default function NoteList({
       <div className="flex items-center gap-1 px-3 py-1.5">
         <button
           onClick={onCreate}
-          className="flex items-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-zinc-100 transition-colors duration-150"
+          className="flex items-center gap-1.5 flex-1 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-150"
         >
           <Plus className="h-3 w-3" />
           New Note
         </button>
         <button
           onClick={onRefresh}
-          className="flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-zinc-100 transition-colors duration-150"
+          className="flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground/50 hover:text-foreground hover:bg-accent transition-colors duration-150"
         >
           <RefreshCw className="h-3 w-3" />
         </button>
       </div>
 
       {/* Notes list */}
-      <div className="divide-y divide-zinc-100">
+      <div className="divide-y divide-border/50">
         <AnimatePresence initial={false}>
           {notes.map((note, index) => {
             const isActive = note.id === activeNoteId;
@@ -93,7 +93,7 @@ export default function NoteList({
                 onClick={() => onSelect(note.id)}
                 className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer
                   transition-colors duration-150
-                  ${isActive ? "bg-zinc-100" : "hover:bg-zinc-50"}
+                  ${isActive ? "bg-accent" : "hover:bg-accent/50"}
                   ${isConfirming ? "bg-red-50" : ""}`}
               >
                 <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${
@@ -116,7 +116,7 @@ export default function NoteList({
                     transition-colors duration-150
                     ${isConfirming
                       ? "bg-red-100 text-red-600"
-                      : "text-muted-foreground/30 hover:text-red-500 hover:bg-zinc-100"
+                      : "text-muted-foreground/30 hover:text-red-500 hover:bg-accent"
                     }`}
                 >
                   <Trash2 className="h-2.5 w-2.5" />

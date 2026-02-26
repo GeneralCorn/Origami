@@ -70,7 +70,7 @@ export default function UploadDropzone({ onIngestionStarted }: UploadDropzonePro
     <>
       <div
         {...getRootProps()}
-        className={`cursor-pointer rounded-md border border-dashed border-zinc-300 px-4 py-5 text-center transition-all duration-150 hover:bg-zinc-50 active:scale-[0.98] ${isDragActive ? "border-zinc-500 bg-zinc-50" : ""} ${isUploading ? "cursor-not-allowed opacity-50" : ""}`}
+        className={`cursor-pointer rounded-md border border-dashed border-border px-4 py-5 text-center transition-all duration-150 hover:bg-accent/50 active:scale-[0.98] ${isDragActive ? "border-ring bg-accent/50" : ""} ${isUploading ? "cursor-not-allowed opacity-50" : ""}`}
       >
         <input {...getInputProps()} />
         <Upload className={`mx-auto h-4 w-4 ${duplicateMsg ? "text-amber-500" : "text-muted-foreground"}`} />

@@ -49,10 +49,10 @@ export default function DocumentDrawer({
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: -300, opacity: 0 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      className="absolute left-0 top-0 bottom-0 z-40 w-72 flex flex-col overflow-hidden backdrop-blur-md bg-white/80 border-r border-thin border-zinc-200"
+      className="absolute left-0 top-0 bottom-0 z-40 w-72 flex flex-col overflow-hidden backdrop-blur-md bg-background/80 border-r border-thin border-border"
     >
       {/* Header */}
-      <div className="flex items-center px-4 py-2 border-b border-thin border-zinc-200">
+      <div className="flex items-center px-4 py-2 border-b border-thin border-border">
         <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
           Workspace
         </span>
@@ -60,7 +60,7 @@ export default function DocumentDrawer({
 
       <ScrollArea className="flex-1">
         {/* Notes */}
-        <div className="border-b border-thin border-zinc-200">
+        <div className="border-b border-thin border-border">
           <div className="flex items-center px-4 py-1.5">
             <span className="text-[10px] font-medium text-muted-foreground/70 tracking-wide uppercase">
               Notes
@@ -77,7 +77,7 @@ export default function DocumentDrawer({
         </div>
 
         {/* Upload */}
-        <div className="border-b border-thin border-zinc-200">
+        <div className="border-b border-thin border-border">
           <div className="flex items-center px-4 py-1.5">
             <span className="text-[10px] font-medium text-muted-foreground/70 tracking-wide uppercase">
               Upload PDF

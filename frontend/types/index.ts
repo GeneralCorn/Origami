@@ -26,6 +26,7 @@ export interface ChromaDocument {
   file_id: string;
   filename: string;
   chunk_count: number;
+  tags: string[];
 }
 
 export interface ChromaChunk {

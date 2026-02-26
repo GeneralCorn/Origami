@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import { useTheme } from "@/lib/theme";
 import "katex/dist/katex.min.css";
 
 const MarkdownPreview = dynamic(
@@ -61,8 +62,9 @@ interface AnimatedTextProps {
 }
 
 export default function AnimatedText({ content }: AnimatedTextProps) {
+  const { theme } = useTheme();
   return (
-    <div data-color-mode="light" className="chat-markdown">
+    <div data-color-mode={theme === "light" ? "light" : "dark"} className="chat-markdown">
       <MarkdownPreview
         source={ensureLatexDelimiters(content)}
         remarkPlugins={[remarkMath]}

@@ -75,7 +75,7 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
               className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md overflow-hidden transition-colors duration-150 ${
-                isConfirming ? "bg-red-50/50" : "hover:bg-zinc-50"
+                isConfirming ? "bg-red-50/50" : "hover:bg-accent/50"
               }`}
             >
               <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
@@ -93,7 +93,7 @@ export default function DocumentList({ refreshTrigger }: DocumentListProps) {
                 className={`flex-shrink-0 flex items-center justify-center h-5 w-5 rounded transition-colors duration-150 ${
                   isConfirming
                     ? "bg-red-100 text-red-600"
-                    : "text-muted-foreground/30 hover:text-red-500 hover:bg-zinc-100"
+                    : "text-muted-foreground/30 hover:text-red-500 hover:bg-accent"
                 }`}
               >
                 <Trash2 className="h-2.5 w-2.5" />

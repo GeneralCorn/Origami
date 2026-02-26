@@ -86,7 +86,7 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
       {/* Avatar */}
       <div className="flex-shrink-0 pt-0.5">
         {isUser ? (
-          <div className="flex h-6 w-6 items-center justify-center rounded-sm border-thin border-zinc-200">
+          <div className="flex h-6 w-6 items-center justify-center rounded-sm border-thin border-border">
             <User className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
         ) : (

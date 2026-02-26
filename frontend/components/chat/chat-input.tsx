@@ -53,7 +53,7 @@ export default function ChatInput({ onSend, isLoading }: ChatInputProps) {
         placeholder="Ask about your notes..."
         disabled={isLoading}
         rows={1}
-        className="flex-1 text-sm border-thin border-zinc-200 bg-transparent rounded-md px-3 py-2 resize-none outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground disabled:opacity-50"
+        className="flex-1 text-sm border-thin border-border bg-transparent rounded-md px-3 py-2 resize-none outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground disabled:opacity-50"
       />
       <motion.button
         type="button"

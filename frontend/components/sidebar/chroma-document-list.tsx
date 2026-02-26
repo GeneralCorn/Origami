@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Database, FileText, Trash2, Eye } from "lucide-react";
 import { fetchDocuments, deleteDocument } from "@/lib/api/documents";
+import { tagColor } from "@/lib/utils";
 import type { ChromaDocument } from "@/types";
 import type { PendingIngestion } from "./document-drawer";
 
@@ -102,7 +103,7 @@ export default function ChromaDocumentList({
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="h-16 rounded-lg bg-zinc-100 animate-pulse"
+            className="h-16 rounded-lg bg-muted animate-pulse"
             style={{ animationDelay: `${i * 150}ms` }}
           />
         ))}
@@ -208,7 +209,7 @@ export default function ChromaDocumentList({
               className={`rounded-lg border border-thin p-2.5 overflow-hidden transition-colors duration-150
                 ${isConfirming
                   ? "border-red-200 bg-red-50/50"
-                  : "border-zinc-200 bg-white/60 hover:bg-zinc-50"
+                  : "border-border bg-card/60 hover:bg-accent/50"
                 }`}
             >
               {/* Top row: icon + name + delete */}
@@ -234,7 +235,7 @@ export default function ChromaDocumentList({
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => onOpenReader(doc.filename.replace(/\.pdf$/i, ""))}
-                      className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground/30 hover:text-foreground hover:bg-zinc-100 transition-colors duration-150"
+                      className="flex items-center justify-center h-5 w-5 rounded text-muted-foreground/30 hover:text-foreground hover:bg-accent transition-colors duration-150"
                     >
                       <Eye className="h-2.5 w-2.5" />
                     </motion.button>
@@ -246,13 +247,30 @@ export default function ChromaDocumentList({
                       transition-colors duration-150
                       ${isConfirming
                         ? "bg-red-100 text-red-600"
-                        : "text-muted-foreground/30 hover:text-red-500 hover:bg-zinc-100"
+                        : "text-muted-foreground/30 hover:text-red-500 hover:bg-accent"
                       }`}
                   >
                     <Trash2 className="h-2.5 w-2.5" />
                   </motion.button>
                 </div>
               </div>
+
+              {/* Tags */}
+              {doc.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5 ml-5.5">
+                  {doc.tags.map((tag) => {
+                    const colors = tagColor(tag);
+                    return (
+                      <span
+                        key={tag}
+                        className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${colors.bg} ${colors.text}`}
+                      >
+                        {tag}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
 
             </motion.div>
           );

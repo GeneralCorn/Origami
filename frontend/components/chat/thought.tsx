@@ -23,13 +23,13 @@ export default function Thought({ text, isStreaming }: ThoughtProps) {
   return (
     <motion.div
       layout
-      className="rounded-md border-thin border-zinc-200 backdrop-blur-md bg-zinc-50/80 overflow-hidden my-2"
+      className="rounded-md border-thin border-border backdrop-blur-md bg-muted/80 overflow-hidden my-2"
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
     >
       {/* Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-zinc-100/50 transition-colors duration-150"
+        className="flex items-center gap-2 w-full px-3 py-2 text-left hover:bg-accent/50 transition-colors duration-150"
       >
         <motion.div
           animate={{ rotate: isOpen ? 90 : 0 }}
@@ -41,7 +41,7 @@ export default function Thought({ text, isStreaming }: ThoughtProps) {
           {isStreaming ? "Thinking..." : "Thought"}
         </span>
         {isStreaming && (
-          <span className="ml-auto h-1.5 w-1.5 rounded-full bg-zinc-400 animate-subtle-pulse" />
+          <span className="ml-auto h-1.5 w-1.5 rounded-full bg-muted-foreground animate-subtle-pulse" />
         )}
       </button>
 

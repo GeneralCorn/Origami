@@ -86,7 +86,7 @@ export default function NamingDialog({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.15 }}
-            className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-80 rounded-lg border border-zinc-200 bg-white p-4 shadow-lg"
+            className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-80 rounded-lg border border-border bg-popover p-4 shadow-lg"
           >
             <div className="flex items-center gap-2 mb-3">
               <FileText className="h-4 w-4 text-muted-foreground" />
@@ -107,7 +107,7 @@ export default function NamingDialog({
                 if (e.key === "Escape") onCancel();
               }}
               placeholder="untitled"
-              className="text-sm border-thin border-zinc-200"
+              className="text-sm border-thin border-border"
             />
 
             {/* Tag picker */}
@@ -142,7 +142,7 @@ export default function NamingDialog({
                   }
                 }}
                 placeholder="New tag..."
-                className="text-xs h-7 border-thin border-zinc-200 flex-1"
+                className="text-xs h-7 border-thin border-border flex-1"
               />
               <Button
                 type="button"

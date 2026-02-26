@@ -14,7 +14,7 @@ export default function PdfReader({ name, onBack }: PdfReaderProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Reader header */}
-      <div className="flex items-center justify-between h-10 px-4 border-b border-thin border-zinc-200 shrink-0">
+      <div className="flex items-center justify-between h-10 px-4 border-b border-thin border-border shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
           <span className="text-xs font-medium text-foreground truncate">
@@ -23,7 +23,7 @@ export default function PdfReader({ name, onBack }: PdfReaderProps) {
         </div>
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-zinc-100 transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
           <ArrowLeft className="h-3 w-3" />
           <span>Research</span>

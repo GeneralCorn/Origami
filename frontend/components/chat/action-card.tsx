@@ -59,12 +59,12 @@ export default function ActionCard({
   return (
     <motion.div
       layout
-      className="rounded-lg border-thin border-zinc-200 bg-zinc-50/50 overflow-hidden my-2"
+      className="rounded-lg border-thin border-border bg-muted/50 overflow-hidden my-2"
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
     >
       <button
         onClick={() => noteId && onNavigate?.(noteId)}
-        className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-zinc-100/60 transition-colors duration-150"
+        className="flex items-center gap-2.5 w-full px-3 py-2.5 text-left hover:bg-accent/60 transition-colors duration-150"
       >
         <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 shrink-0">
           <Icon className="h-3 w-3 text-emerald-600" />
