@@ -11,6 +11,14 @@ Local AI research assistant. Upload PDFs, take Markdown notes, and chat with an 
 - [Python](https://www.python.org/) 3.13+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
 
+## Gallery
+
+Themes:
+
+![Lightmode](./images/lightmode.png)
+
+![Darkmode](./images/darkmode.png)
+
 ## Setup
 
 ### 1. Ollama

@@ -18,6 +18,18 @@ export async function fetchDocumentChunks(fileId: string): Promise<ChromaChunk[]
   return response.json();
 }
 
+export async function updateTitle(fileId: string, title: string): Promise<{ file_id: string; title: string }> {
+  const response = await fetch(`${API_URL}/api/documents/${fileId}/title`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update title: ${response.statusText}`);
+  }
+  return response.json();
+}
+
 export async function deleteDocument(fileId: string): Promise<{ deleted_chunks: number }> {
   const response = await fetch(`${API_URL}/api/documents/${fileId}`, {
     method: "DELETE",

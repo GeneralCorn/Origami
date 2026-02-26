@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from services.chroma import get_collection, get_document_meta, set_tags, delete_chunks
+from services.chroma import get_collection, get_document_meta, set_tags, set_title, delete_chunks
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 PDFS_DIR = _BACKEND_DIR / "pdfs"
@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 class TagsRequest(BaseModel):
     tags: list[str]
+
+
+class TitleRequest(BaseModel):
+    title: str
 
 
 @router.get("/documents")
@@ -36,6 +40,7 @@ async def list_documents():
             docs[fid] = {
                 "file_id": fid,
                 "filename": meta.get("filename", "unknown"),
+                "title": meta.get("title", meta.get("filename", "unknown")),
                 "chunk_count": 0,
                 "tags": meta.get("tags", []),
             }
@@ -74,6 +79,14 @@ async def update_tags(file_id: str, req: TagsRequest):
     if not set_tags(file_id, req.tags):
         raise HTTPException(status_code=404, detail="Document not found")
     return {"file_id": file_id, "tags": req.tags}
+
+
+@router.patch("/documents/{file_id}/title")
+async def update_title(file_id: str, req: TitleRequest):
+    """Set title for a document (updates all its chunks)."""
+    if not set_title(file_id, req.title):
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"file_id": file_id, "title": req.title}
 
 
 @router.delete("/documents/{file_id}")

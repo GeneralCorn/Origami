@@ -4,12 +4,19 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronRight } from "lucide-react";
 
+export interface ThoughtMeta {
+  latency_s?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+}
+
 interface ThoughtProps {
   text: string;
   isStreaming: boolean;
+  meta?: ThoughtMeta;
 }
 
-export default function Thought({ text, isStreaming }: ThoughtProps) {
+export default function Thought({ text, isStreaming, meta }: ThoughtProps) {
   const [isOpen, setIsOpen] = useState(true);
 
   // Auto-collapse when streaming completes
@@ -38,7 +45,11 @@ export default function Thought({ text, isStreaming }: ThoughtProps) {
           <ChevronRight className="h-3 w-3 text-muted-foreground" />
         </motion.div>
         <span className="text-xs font-medium text-muted-foreground">
-          {isStreaming ? "Thinking..." : "Thought"}
+          {isStreaming
+            ? "Thinking..."
+            : meta?.latency_s != null
+              ? `Thought \u00b7 ${meta.latency_s.toFixed(2)}s`
+              : "Thought"}
         </span>
         {isStreaming && (
           <span className="ml-auto h-1.5 w-1.5 rounded-full bg-muted-foreground animate-subtle-pulse" />
@@ -59,6 +70,11 @@ export default function Thought({ text, isStreaming }: ThoughtProps) {
               <p className="text-xs font-mono leading-relaxed text-muted-foreground whitespace-pre-wrap">
                 {text}
               </p>
+              {meta != null && meta.input_tokens != null && meta.input_tokens > 0 && (
+                <p className="text-[10px] font-mono text-muted-foreground/60 mt-1.5 pt-1.5 border-t border-border/30">
+                  {meta.input_tokens} in &middot; {meta.output_tokens ?? 0} out tokens
+                </p>
+              )}
             </div>
           </motion.div>
         )}

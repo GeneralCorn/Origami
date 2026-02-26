@@ -10,6 +10,7 @@ export interface UploadResponse {
   id: string;
   filename: string;
   suggested_name?: string;
+  suggested_title?: string;
   size?: number;
   status: string;
   duplicate?: boolean;
@@ -25,6 +26,7 @@ export interface PersistedPDF {
 export interface ChromaDocument {
   file_id: string;
   filename: string;
+  title?: string;
   chunk_count: number;
   tags: string[];
 }

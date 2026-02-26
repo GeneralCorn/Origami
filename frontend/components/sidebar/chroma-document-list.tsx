@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Database, FileText, Trash2, Eye } from "lucide-react";
-import { fetchDocuments, deleteDocument } from "@/lib/api/documents";
+import { Database, FileText, Trash2, Eye, Check, Pencil } from "lucide-react";
+import { fetchDocuments, deleteDocument, updateTitle } from "@/lib/api/documents";
 import { tagColor } from "@/lib/utils";
 import type { ChromaDocument } from "@/types";
 import type { PendingIngestion } from "./document-drawer";
@@ -22,6 +22,8 @@ export default function ChromaDocumentList({
   const [docs, setDocs] = useState<ChromaDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
   const confirmTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   const load = useCallback(async () => {
@@ -84,6 +86,18 @@ export default function ChromaDocumentList({
       deleteDocument(fileId).catch(() => load());
     },
     [confirmId, load]
+  );
+
+  const handleTitleSave = useCallback(
+    async (fileId: string) => {
+      const trimmed = editTitle.trim();
+      if (!trimmed) { setEditingId(null); return; }
+      // Optimistic update
+      setDocs((prev) => prev.map((d) => d.file_id === fileId ? { ...d, title: trimmed } : d));
+      setEditingId(null);
+      updateTitle(fileId, trimmed).catch(() => load());
+    },
+    [editTitle, load]
   );
 
   // Detect duplicates
@@ -216,9 +230,36 @@ export default function ChromaDocumentList({
               <div className="flex items-start gap-2">
                 <FileText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground mt-0.5" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {doc.filename}
-                  </p>
+                  {editingId === doc.file_id ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        autoFocus
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleTitleSave(doc.file_id);
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        className="text-xs font-medium bg-transparent border-b border-foreground/20 outline-none w-full py-0.5"
+                      />
+                      <button
+                        onClick={() => handleTitleSave(doc.file_id)}
+                        className="flex-shrink-0 text-emerald-500 hover:text-emerald-600 transition-colors"
+                      >
+                        <Check className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      className="flex items-center gap-1 group/title cursor-pointer"
+                      onClick={() => { setEditingId(doc.file_id); setEditTitle(doc.title || doc.filename); }}
+                    >
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {doc.title || doc.filename}
+                      </p>
+                      <Pencil className="h-2.5 w-2.5 flex-shrink-0 text-muted-foreground/0 group-hover/title:text-muted-foreground/50 transition-colors" />
+                    </div>
+                  )}
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="text-[10px] font-mono text-muted-foreground">
                       {doc.chunk_count} chunk{doc.chunk_count !== 1 ? "s" : ""}

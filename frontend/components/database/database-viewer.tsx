@@ -8,9 +8,10 @@ import {
   Search,
   ChevronRight,
   FileText,
+  Check,
+  Pencil,
 } from "lucide-react";
-import { fetchDocuments } from "@/lib/api/documents";
-import { fetchDocumentChunks } from "@/lib/api/documents";
+import { fetchDocuments, fetchDocumentChunks, updateTitle } from "@/lib/api/documents";
 import { tagColor } from "@/lib/utils";
 import type { ChromaDocument, ChromaChunk } from "@/types";
 
@@ -67,7 +68,8 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
 
   const filteredDocs = search
     ? documents.filter((d) =>
-        d.filename.toLowerCase().includes(search.toLowerCase())
+        d.filename.toLowerCase().includes(search.toLowerCase()) ||
+        (d.title ?? "").toLowerCase().includes(search.toLowerCase())
       )
     : documents;
 
@@ -96,7 +98,7 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
             <Database className="h-3.5 w-3.5 text-muted-foreground" />
           )}
           <span className="text-xs font-medium text-foreground truncate">
-            {selectedDoc ? selectedDoc.filename : "Knowledge Base"}
+            {selectedDoc ? (selectedDoc.title || selectedDoc.filename) : "Knowledge Base"}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground ml-1">
             {selectedDoc
@@ -147,7 +149,14 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
             }
           />
         ) : (
-          <DocumentTable docs={filteredDocs} onSelect={handleSelectDoc} />
+          <DocumentTable
+            docs={filteredDocs}
+            onSelect={handleSelectDoc}
+            onTitleChange={(fileId, title) => {
+              setDocuments((prev) => prev.map((d) => d.file_id === fileId ? { ...d, title } : d));
+              updateTitle(fileId, title).catch(() => loadDocuments());
+            }}
+          />
         )}
       </div>
     </div>
@@ -159,10 +168,23 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
 function DocumentTable({
   docs,
   onSelect,
+  onTitleChange,
 }: {
   docs: ChromaDocument[];
   onSelect: (doc: ChromaDocument) => void;
+  onTitleChange: (fileId: string, title: string) => void;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const saveTitle = (fileId: string) => {
+    const trimmed = editValue.trim();
+    setEditingId(null);
+    if (trimmed && trimmed !== docs.find((d) => d.file_id === fileId)?.title) {
+      onTitleChange(fileId, trimmed);
+    }
+  };
+
   if (docs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -177,10 +199,10 @@ function DocumentTable({
       <thead className="sticky top-0 bg-muted/95 backdrop-blur-sm z-10">
         <tr className="border-b border-border">
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
-            Filename
+            Title
           </th>
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
-            File ID
+            Filename
           </th>
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
             Tags
@@ -195,17 +217,53 @@ function DocumentTable({
         {docs.map((doc) => (
           <tr
             key={doc.file_id}
-            onClick={() => onSelect(doc)}
+            onClick={() => editingId !== doc.file_id && onSelect(doc)}
             className="border-b border-border/50 hover:bg-accent/50 cursor-pointer transition-colors group"
           >
-            <td className="px-4 py-2.5 font-medium">
-              <div className="flex items-center gap-2">
-                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                {doc.filename}
-              </div>
+            <td className="px-4 py-2.5 font-medium max-w-[300px]">
+              {editingId === doc.file_id ? (
+                <div
+                  className="flex items-center gap-1.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveTitle(doc.file_id);
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    onBlur={() => saveTitle(doc.file_id)}
+                    className="flex-1 text-xs font-medium bg-transparent border-b border-foreground/20 outline-none py-0.5"
+                  />
+                  <button
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => saveTitle(doc.file_id)}
+                    className="flex-shrink-0 text-emerald-500 hover:text-emerald-600 transition-colors"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingId(doc.file_id);
+                    setEditValue(doc.title || doc.filename);
+                  }}
+                >
+                  <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate">
+                    {doc.title || <span className="text-muted-foreground/40 italic">No title</span>}
+                  </span>
+                  <Pencil className="h-2.5 w-2.5 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors" />
+                </div>
+              )}
             </td>
-            <td className="px-4 py-2.5 font-mono text-muted-foreground">
-              {doc.file_id.slice(0, 8)}...
+            <td className="px-4 py-2.5 font-mono text-muted-foreground text-[10px]">
+              {doc.filename}
             </td>
             <td className="px-4 py-2.5">
               <div className="flex flex-wrap gap-1">

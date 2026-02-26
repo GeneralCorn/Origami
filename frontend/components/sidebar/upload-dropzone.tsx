@@ -81,7 +81,7 @@ export default function UploadDropzone({ onIngestionStarted }: UploadDropzonePro
 
       <NamingDialog
         open={pendingUpload !== null}
-        suggestedName={pendingUpload?.response.suggested_name ?? ""}
+        suggestedName={pendingUpload?.response.suggested_title ?? pendingUpload?.response.suggested_name ?? ""}
         originalFilename={pendingUpload?.file.name ?? ""}
         onConfirm={handleConfirm}
         onCancel={handleCancel}

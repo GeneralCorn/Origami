@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TypedDict
@@ -49,15 +50,35 @@ class ResearchState(TypedDict):
     active_note_title: str
     active_note_id: str | None
     scope: list[str] | None
+    # Observability accumulators
+    total_input_tokens: int
+    total_output_tokens: int
+    # Individual final response stats (for text event metadata)
+    final_latency_s: float
+    final_input_tokens: int
+    final_output_tokens: int
 
 
-def _emit_event(state: ResearchState, event_type: str, content: Any) -> None:
+def _emit_event(state: ResearchState, event_type: str, content: Any,
+                meta: dict[str, Any] | None = None) -> None:
     """Append a stream event to state for the frontend to consume."""
-    state["events"].append({
+    event: dict[str, Any] = {
         "type": event_type,
         "content": content,
         "timestamp": datetime.now().isoformat(),
-    })
+    }
+    if meta:
+        event["meta"] = meta
+    state["events"].append(event)
+
+
+def _extract_usage(response: Any) -> dict[str, int]:
+    """Extract token counts from a ChatOllama response, defaulting to 0."""
+    usage = getattr(response, "usage_metadata", None) or {}
+    return {
+        "input_tokens": usage.get("input_tokens", 0),
+        "output_tokens": usage.get("output_tokens", 0),
+    }
 
 
 # -- Nodes ------------------------------------------------------------------
@@ -65,26 +86,32 @@ def _emit_event(state: ResearchState, event_type: str, content: Any) -> None:
 
 async def retrieve_node(state: ResearchState) -> ResearchState:
     """Retrieve relevant contextualized chunks from ChromaDB."""
+    t0 = time.perf_counter()
     query = state["current_query"]
 
     chunks = await vector_search(query, n_results=5, file_ids=state.get("scope"))
     state["retrieved_chunks"] = [c["text"] for c in chunks]
 
+    elapsed = time.perf_counter() - t0
+    meta = {"latency_s": round(elapsed, 2), "input_tokens": 0, "output_tokens": 0}
     if chunks:
         # Show which sources were found
         sources = list(dict.fromkeys(c["source"] for c in chunks))  # unique, ordered
-        _emit_event(state, "searching", f"Reading {len(chunks)} chunks from {', '.join(sources)}")
+        _emit_event(state, "searching", f"Reading {len(chunks)} chunks from {', '.join(sources)}", meta=meta)
     else:
-        _emit_event(state, "searching", "No relevant documents found")
+        _emit_event(state, "searching", "No relevant documents found", meta=meta)
 
+    logger.info("[LATENCY] retrieve_node: %.3fs (%d chunks)", elapsed, len(chunks))
     return state
 
 
 async def analyze_node(state: ResearchState) -> ResearchState:
     """Analyze retrieved chunks and extract relevant information."""
     if not state["retrieved_chunks"]:
+        logger.info("[LATENCY] analyze_node: skipped (no chunks)")
         return state
 
+    t0 = time.perf_counter()
     llm = ChatOllama(model=AGENT_MODEL, temperature=0, num_predict=2048)
 
     chunks_text = "\n\n---\n\n".join(state["retrieved_chunks"])
@@ -97,7 +124,16 @@ async def analyze_node(state: ResearchState) -> ResearchState:
         active_notes=state["current_note"][:2000] if state["current_note"] else "No active notes.",
     )
 
+    t_llm = time.perf_counter()
     response = await llm.ainvoke(prompt)
+    t_llm_done = time.perf_counter()
+    llm_latency = t_llm_done - t_llm
+    usage = _extract_usage(response)
+    state["total_input_tokens"] += usage["input_tokens"]
+    state["total_output_tokens"] += usage["output_tokens"]
+    logger.info("[LATENCY] analyze_node LLM call: %.3fs (%d in / %d out tokens)",
+                llm_latency, usage["input_tokens"], usage["output_tokens"])
+
     analysis = response.content
     if isinstance(analysis, str):
         analysis = strip_think_tags(analysis)
@@ -112,8 +148,10 @@ async def analyze_node(state: ResearchState) -> ResearchState:
         ]
         if new_notes:
             state["research_notes"].extend(new_notes)
-            _emit_event(state, "note_taking", f"Extracted {len(new_notes)} findings")
+            _emit_event(state, "note_taking", f"Extracted {len(new_notes)} findings",
+                        meta={"latency_s": round(llm_latency, 2), **usage})
 
+    logger.info("[LATENCY] analyze_node total: %.3fs", time.perf_counter() - t0)
     return state
 
 
@@ -147,14 +185,17 @@ async def review_node(state: ResearchState) -> ResearchState:
     Review if the research notes fully answer the user's question.
     If not, generate a refined query and loop back.
     """
+    t0 = time.perf_counter()
     state["loop_count"] += 1
 
     if state["loop_count"] >= MAX_RESEARCH_LOOPS:
         state["is_complete"] = True
+        logger.info("[LATENCY] review_node: skipped (max loops reached)")
         return state
 
     if not state["research_notes"]:
         state["is_complete"] = True
+        logger.info("[LATENCY] review_node: skipped (no research notes)")
         return state
 
     llm = ChatOllama(model=AGENT_MODEL, temperature=0, num_predict=1024)
@@ -165,7 +206,16 @@ async def review_node(state: ResearchState) -> ResearchState:
         notes_text=notes_text,
     )
 
+    t_llm = time.perf_counter()
     response = await llm.ainvoke(prompt)
+    t_llm_done = time.perf_counter()
+    llm_latency = t_llm_done - t_llm
+    usage = _extract_usage(response)
+    state["total_input_tokens"] += usage["input_tokens"]
+    state["total_output_tokens"] += usage["output_tokens"]
+    logger.info("[LATENCY] review_node LLM call: %.3fs (%d in / %d out tokens)",
+                llm_latency, usage["input_tokens"], usage["output_tokens"])
+
     review = response.content
     if isinstance(review, str):
         review = strip_think_tags(review)
@@ -177,10 +227,13 @@ async def review_node(state: ResearchState) -> ResearchState:
         refined = review.replace("INCOMPLETE:", "").strip()
         if refined and len(refined) > 5:
             state["current_query"] = refined
-            _emit_event(state, "reasoning", f"Refining search: {refined}")
+            _emit_event(state, "reasoning", f"Refining search: {refined}",
+                        meta={"latency_s": round(llm_latency, 2), **usage})
         else:
             state["is_complete"] = True
 
+    logger.info("[LATENCY] review_node total: %.3fs (loop %d, complete=%s)",
+                time.perf_counter() - t0, state["loop_count"], state["is_complete"])
     return state
 
 
@@ -351,6 +404,7 @@ def _extract_json(text: str) -> dict | None:
 
 async def final_response_node(state: ResearchState) -> ResearchState:
     """Synthesize a final answer from all research notes + conversation context."""
+    t0 = time.perf_counter()
     llm = ChatOllama(model=AGENT_MODEL, temperature=0.3, num_predict=4096)
 
     notes_text = "\n".join(f"- {n}" for n in state["research_notes"]) if state["research_notes"] else "No specific research findings."
@@ -371,7 +425,22 @@ async def final_response_node(state: ResearchState) -> ResearchState:
         .replace("{active_note_title}", active_title)
         .replace("{mode_instruction}", mode_instruction)
     )
+    t_llm = time.perf_counter()
     response = await llm.ainvoke(prompt)
+    t_llm_done = time.perf_counter()
+    llm_latency = t_llm_done - t_llm
+    usage = _extract_usage(response)
+    state["total_input_tokens"] += usage["input_tokens"]
+    state["total_output_tokens"] += usage["output_tokens"]
+    state["final_latency_s"] = round(llm_latency, 2)
+    state["final_input_tokens"] = usage["input_tokens"]
+    state["final_output_tokens"] = usage["output_tokens"]
+    logger.info("[LATENCY] final_response_node LLM call: %.3fs (%d in / %d out tokens)",
+                llm_latency, usage["input_tokens"], usage["output_tokens"])
+
+    _emit_event(state, "reasoning", "Generated response",
+                meta={"latency_s": round(llm_latency, 2), **usage})
+
     raw = response.content
     if isinstance(raw, str):
         raw = strip_think_tags(raw)
@@ -437,6 +506,7 @@ async def final_response_node(state: ResearchState) -> ResearchState:
     elif action in ("edit", "create") and not state["allow_edits"]:
         logger.debug("Action %s suppressed: allow_edits is False", action)
 
+    logger.info("[LATENCY] final_response_node total: %.3fs (action=%s)", time.perf_counter() - t0, action)
     return state
 
 
@@ -512,6 +582,11 @@ async def run_research_agent(
         "active_note_title": active_note_title,
         "active_note_id": active_note_id,
         "scope": scope,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "final_latency_s": 0.0,
+        "final_input_tokens": 0,
+        "final_output_tokens": 0,
     }
 
     result = await research_agent.ainvoke(initial_state)
@@ -552,9 +627,15 @@ async def stream_research_agent(
         "active_note_title": active_note_title,
         "active_note_id": active_note_id,
         "scope": scope,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "final_latency_s": 0.0,
+        "final_input_tokens": 0,
+        "final_output_tokens": 0,
     }
 
     last_event_count = 0
+    t_pipeline = time.perf_counter()
 
     async for state_update in research_agent.astream(initial_state):
         # Each state_update is a dict of {node_name: updated_state}
@@ -562,12 +643,28 @@ async def stream_research_agent(
             if node_name == "__end__":
                 continue
 
+            t_node_done = time.perf_counter()
+            logger.info("[LATENCY] node '%s' completed at +%.3fs", node_name, t_node_done - t_pipeline)
+
             events = node_state.get("events", [])
             # Yield any new events since last check
             for event in events[last_event_count:]:
                 yield event
             last_event_count = len(events)
 
-            # If we have a final answer, yield it as text
+            # If we have a final answer, yield it as text with stats
             if node_state.get("final_answer"):
-                yield {"type": "text", "content": node_state["final_answer"]}
+                yield {
+                    "type": "text",
+                    "content": node_state["final_answer"],
+                    "meta": {
+                        "latency_s": node_state.get("final_latency_s", 0.0),
+                        "input_tokens": node_state.get("final_input_tokens", 0),
+                        "output_tokens": node_state.get("final_output_tokens", 0),
+                        "total_input_tokens": node_state.get("total_input_tokens", 0),
+                        "total_output_tokens": node_state.get("total_output_tokens", 0),
+                        "total_latency_s": round(time.perf_counter() - t_pipeline, 2),
+                    },
+                }
+
+    logger.info("[LATENCY] === pipeline total: %.3fs ===", time.perf_counter() - t_pipeline)

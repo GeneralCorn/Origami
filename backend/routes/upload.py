@@ -32,13 +32,13 @@ class ConfirmRequest(BaseModel):
 
 async def _process_pdf(
     file_id: str, file_path: Path, filename: str,
-    tags: list[str], content_hash: str,
+    tags: list[str], content_hash: str, title: str = "",
 ) -> None:
     """Background task: run the contextual retrieval ingestion pipeline."""
     try:
         count = await ingest_pdf(
             file_path, file_id, filename,
-            tags=tags, content_hash=content_hash,
+            tags=tags, content_hash=content_hash, title=title,
         )
         logger.info(f"Finished ingesting {filename}: {count} chunks")
     except Exception as e:
@@ -70,13 +70,14 @@ async def upload_pdf(file: UploadFile = File(...)):
             "status": "duplicate",
         }
 
-    suggested_name = generate_title_from_pdf(file_path)
-    safe_name = sanitize_filename(suggested_name)
+    suggested_title = generate_title_from_pdf(file_path)
+    safe_name = sanitize_filename(suggested_title)
 
     return {
         "id": file_id,
         "filename": file.filename,
         "suggested_name": safe_name,
+        "suggested_title": suggested_title,
         "size": len(content),
         "content_hash": content_hash,
         "status": "pending_confirmation",
@@ -113,10 +114,13 @@ async def confirm_upload(req: ConfirmRequest, background_tasks: BackgroundTasks)
     file_id = req.id
     content_hash = hash_bytes(final_path.read_bytes())
 
+    # The user-facing title is the raw name before sanitization
+    title = req.name.strip() or "Untitled"
+
     # Tags + hash are passed to ingest and stored on every chunk in ChromaDB
     background_tasks.add_task(
         _process_pdf, file_id, final_path, f"{final_name}.pdf",
-        tags=req.tags, content_hash=content_hash,
+        tags=req.tags, content_hash=content_hash, title=title,
     )
 
     return {
@@ -147,6 +151,7 @@ async def list_pdfs():
         if fn and fn not in filename_map:
             filename_map[fn] = {
                 "file_id": meta.get("file_id", ""),
+                "title": meta.get("title", fn),
                 "tags": meta.get("tags", []),
             }
 
@@ -164,6 +169,7 @@ async def list_pdfs():
         chroma_info = filename_map.get(path.name)
         if chroma_info:
             entry["file_id"] = chroma_info["file_id"]
+            entry["title"] = chroma_info["title"]
             entry["tags"] = chroma_info["tags"]
         pdfs.append(entry)
     pdfs.sort(key=lambda p: p["uploaded_at"], reverse=True)

@@ -89,6 +89,18 @@ def set_tags(file_id: str, tags: list[str]) -> bool:
     return True
 
 
+def set_title(file_id: str, title: str) -> bool:
+    """Update title on all chunks belonging to a document."""
+    col = get_collection()
+    results = col.get(where={"file_id": file_id}, include=["metadatas"])
+    if not results["ids"]:
+        return False
+    for meta in results["metadatas"]:
+        meta["title"] = title
+    col.update(ids=results["ids"], metadatas=results["metadatas"])
+    return True
+
+
 def delete_chunks(file_id: str) -> int:
     """Delete all ChromaDB chunks for a file_id. Returns count deleted."""
     col = get_collection()

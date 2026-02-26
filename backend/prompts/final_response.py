@@ -44,5 +44,20 @@ Requirements:
 - For chat: "message" should be thorough and use markdown (headings, lists, bold, math)
 - For edit/create: "message" should be a brief confirmation (under 15 words)
 - For create: pick a short 2-3 word filename ending in .md
-- Math: inline $...$ and display $$...$$ on own lines
+- Math: ALWAYS wrap LaTeX in delimiters — inline $...$ and display $$...$$ on own lines. NEVER write bare LaTeX.
+
+## Math formatting examples
+
+WRONG — bare LaTeX without delimiters:
+- The loss is L_{hinge} = \max(0, E(x) - E(y) + m)
+- Include regularization \lambda \|x\|^2
+
+CORRECT — inline math with $:
+- The loss is $L_{hinge} = \\max(0, E(x) - E(y) + m)$
+- Include regularization $\\lambda \\|x\\|^2$
+
+CORRECT — display math with $$ on own lines:
+- **Loss Function**\n\n$$\nL_{hinge} = \\max(0, E_{\\phi}(c, l^c) - E_{\\phi}(c, l^{\\ell}) + m)\n$$
+
+Every variable, equation, and symbol MUST be inside $ or $$. No exceptions.
 """

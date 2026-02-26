@@ -2,7 +2,7 @@
 
 import { type UIMessage } from "ai";
 import { User, Bot } from "lucide-react";
-import Thought from "./thought";
+import Thought, { type ThoughtMeta } from "./thought";
 import AnimatedText from "./animated-text";
 import ActionCard from "./action-card";
 
@@ -104,17 +104,33 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
         <div className="text-sm leading-relaxed text-foreground">
           {message.parts.map((part, i) => {
             if (part.type === "reasoning") {
+              const meta = (part as any).providerMetadata?.origami as ThoughtMeta | undefined;
               return (
                 <Thought
                   key={i}
                   text={part.text}
                   isStreaming={isStreaming && message.role === "assistant"}
+                  meta={meta}
                 />
               );
             }
             if (part.type === "text") {
+              const textMeta = (part as any).providerMetadata?.origami as Record<string, number> | undefined;
               // Fallback: recover raw JSON that backend failed to parse
               const recovered = tryRecoverAction(part.text);
+              const statsFooter = textMeta?.total_latency_s != null && (
+                <p className="text-[10px] font-mono text-muted-foreground/50 mt-2 space-x-1">
+                  <span>
+                    Response: {textMeta.latency_s?.toFixed(2) ?? "?"}s
+                    {" \u00b7 "}{textMeta.input_tokens ?? 0} in / {textMeta.output_tokens ?? 0} out
+                  </span>
+                  <span className="text-muted-foreground/30">|</span>
+                  <span>
+                    Total: {textMeta.total_latency_s.toFixed(2)}s
+                    {" \u00b7 "}{textMeta.total_output_tokens ?? 0} tokens out
+                  </span>
+                </p>
+              );
               if (recovered) {
                 const isAction = recovered.action === "edit" || recovered.action === "create";
                 return (
@@ -129,11 +145,15 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
                         onNavigate={actionHandlers?.onNavigate}
                       />
                     )}
+                    {statsFooter}
                   </div>
                 );
               }
               return (
-                <AnimatedText key={i} content={part.text} />
+                <div key={i}>
+                  <AnimatedText content={part.text} />
+                  {statsFooter}
+                </div>
               );
             }
             if (part.type === "data-action") {

@@ -122,6 +122,7 @@ async def ingest_pdf(
     filename: str,
     tags: list[str] | None = None,
     content_hash: str | None = None,
+    title: str = "",
 ) -> int:
     """
     Full contextual retrieval ingestion pipeline for a single PDF.
@@ -172,6 +173,7 @@ async def ingest_pdf(
                 metadatas=[{
                     "file_id": file_id,
                     "filename": filename,
+                    "title": title or filename,
                     "chunk_index": i,
                     "original_chunk": chunk,
                     "tags": chunk_tags,
