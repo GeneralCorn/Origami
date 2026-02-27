@@ -29,6 +29,7 @@ export interface ChromaDocument {
   title?: string;
   chunk_count: number;
   tags: string[];
+  publish_date?: string;
 }
 
 export interface ChromaChunk {
@@ -36,6 +37,8 @@ export interface ChromaChunk {
   chunk_index: number;
   text: string;
   original_text: string;
+  page_start?: number;
+  page_end?: number;
 }
 
 export interface NoteFile {

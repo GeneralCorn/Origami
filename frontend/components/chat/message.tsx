@@ -81,6 +81,18 @@ function tryRecoverAction(
 export default function Message({ message, isStreaming, actionHandlers }: MessageProps) {
   const isUser = message.role === "user";
 
+  // Find cumulative stats from the last text part (final response)
+  const cumulativeMeta = (() => {
+    for (let i = message.parts.length - 1; i >= 0; i--) {
+      const part = message.parts[i];
+      if (part.type === "text") {
+        const m = (part as any).providerMetadata?.origami as Record<string, number> | undefined;
+        if (m?.total_latency_s != null) return m;
+      }
+    }
+    return undefined;
+  })();
+
   return (
     <div className="flex gap-3 py-3">
       {/* Avatar */}
@@ -115,22 +127,8 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
               );
             }
             if (part.type === "text") {
-              const textMeta = (part as any).providerMetadata?.origami as Record<string, number> | undefined;
               // Fallback: recover raw JSON that backend failed to parse
               const recovered = tryRecoverAction(part.text);
-              const statsFooter = textMeta?.total_latency_s != null && (
-                <p className="text-[10px] font-mono text-muted-foreground/50 mt-2 space-x-1">
-                  <span>
-                    Response: {textMeta.latency_s?.toFixed(2) ?? "?"}s
-                    {" \u00b7 "}{textMeta.input_tokens ?? 0} in / {textMeta.output_tokens ?? 0} out
-                  </span>
-                  <span className="text-muted-foreground/30">|</span>
-                  <span>
-                    Total: {textMeta.total_latency_s.toFixed(2)}s
-                    {" \u00b7 "}{textMeta.total_output_tokens ?? 0} tokens out
-                  </span>
-                </p>
-              );
               if (recovered) {
                 const isAction = recovered.action === "edit" || recovered.action === "create";
                 return (
@@ -145,16 +143,10 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
                         onNavigate={actionHandlers?.onNavigate}
                       />
                     )}
-                    {statsFooter}
                   </div>
                 );
               }
-              return (
-                <div key={i}>
-                  <AnimatedText content={part.text} />
-                  {statsFooter}
-                </div>
-              );
+              return <AnimatedText key={i} content={part.text} />;
             }
             if (part.type === "data-action") {
               const data = (part as { type: string; data: Record<string, string> }).data;
@@ -174,6 +166,12 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
             }
             return null;
           })}
+          {cumulativeMeta && (
+            <p className="text-[10px] font-mono text-muted-foreground/40 mt-3 pt-2 border-t border-border/20">
+              Total: {cumulativeMeta.total_latency_s.toFixed(2)}s
+              {" \u00b7 "}{cumulativeMeta.total_input_tokens ?? 0} in / {cumulativeMeta.total_output_tokens ?? 0} out
+            </p>
+          )}
         </div>
       </div>
     </div>

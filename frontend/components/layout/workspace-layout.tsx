@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import { motion } from "motion/react";
 import { PanelLeft, Database, MessageSquare, ChevronLeft, ChevronRight, Palette, Sun, Moon, Check } from "lucide-react";
@@ -15,7 +16,6 @@ import MarkdownEditor from "@/components/editor/markdown-editor";
 import ChatPanel from "@/components/chat/chat-panel";
 import DocumentDrawer from "@/components/sidebar/document-drawer";
 import PdfReader from "@/components/reader/pdf-reader";
-import DatabaseViewer from "@/components/database/database-viewer";
 import type { NoteFile } from "@/types";
 import {
   fetchNotes,
@@ -36,11 +36,12 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
 ];
 
 export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
+  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [themeOpen, setThemeOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editorContent, setEditorContent] = useState("");
-  const [viewMode, setViewMode] = useState<"research" | "reader" | "database">("research");
+  const [viewMode, setViewMode] = useState<"research" | "reader">("research");
   const [readerPdfName, setReaderPdfName] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(true);
   const chatPanelRef = useRef<PanelImperativeHandle>(null);
@@ -327,14 +328,8 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
         <div className="ml-auto flex items-center gap-1">
           <motion.button
             whileTap={{ scale: 0.98 }}
-            onClick={() =>
-              setViewMode(viewMode === "database" ? "research" : "database")
-            }
-            className={`flex items-center justify-center h-8 w-8 rounded-md transition-colors duration-150 ${
-              viewMode === "database"
-                ? "bg-accent text-foreground"
-                : "hover:bg-accent text-muted-foreground"
-            }`}
+            onClick={() => router.push("/database")}
+            className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
           >
             <Database className="h-5 w-5" />
           </motion.button>
@@ -427,13 +422,6 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
               name={readerPdfName}
               onBack={() => setViewMode("research")}
             />
-          </div>
-        )}
-
-        {/* Database viewer overlay */}
-        {viewMode === "database" && (
-          <div className="absolute inset-0 z-10 bg-background">
-            <DatabaseViewer onBack={() => setViewMode("research")} />
           </div>
         )}
 

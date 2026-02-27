@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from starlette.responses import FileResponse
 
-from services.ingest import ingest_pdf, generate_title_from_pdf, extract_text_from_pdf, text_splitter
+from services.ingest import ingest_pdf, generate_title_from_pdf, extract_text_from_pdf, extract_publish_date, text_splitter
 from services.chroma import hash_bytes, find_by_hash, list_all_tags, delete_chunks, get_collection
 from services.text_utils import sanitize_filename
 
@@ -36,11 +36,13 @@ async def _process_pdf(
 ) -> None:
     """Background task: run the contextual retrieval ingestion pipeline."""
     try:
+        publish_date = extract_publish_date(file_path)
         count = await ingest_pdf(
             file_path, file_id, filename,
             tags=tags, content_hash=content_hash, title=title,
+            publish_date=publish_date,
         )
-        logger.info(f"Finished ingesting {filename}: {count} chunks")
+        logger.info(f"Finished ingesting {filename}: {count} chunks (publish_date={publish_date})")
     except Exception as e:
         logger.error(f"Ingestion failed for {filename}: {e}")
 
@@ -108,7 +110,7 @@ async def confirm_upload(req: ConfirmRequest, background_tasks: BackgroundTasks)
     temp_path.unlink()
 
     # Pre-compute chunk count so frontend can track real progress
-    full_text = extract_text_from_pdf(final_path)
+    full_text, _page_offsets = extract_text_from_pdf(final_path)
     chunks = text_splitter.split_text(full_text) if full_text.strip() else []
 
     file_id = req.id

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Database,
@@ -15,11 +16,8 @@ import { fetchDocuments, fetchDocumentChunks, updateTitle } from "@/lib/api/docu
 import { tagColor } from "@/lib/utils";
 import type { ChromaDocument, ChromaChunk } from "@/types";
 
-interface DatabaseViewerProps {
-  onBack: () => void;
-}
-
-export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
+export default function DatabaseViewer() {
+  const router = useRouter();
   const [documents, setDocuments] = useState<ChromaDocument[]>([]);
   const [chunks, setChunks] = useState<ChromaChunk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,11 +105,11 @@ export default function DatabaseViewer({ onBack }: DatabaseViewerProps) {
           </span>
         </div>
         <button
-          onClick={onBack}
+          onClick={() => router.back()}
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         >
           <ArrowLeft className="h-3 w-3" />
-          <span>Research</span>
+          <span>Back</span>
         </button>
       </div>
 
@@ -202,10 +200,16 @@ function DocumentTable({
             Title
           </th>
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
+            File ID
+          </th>
+          <th className="text-left px-4 py-2 font-medium text-muted-foreground">
             Filename
           </th>
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
             Tags
+          </th>
+          <th className="text-left px-4 py-2 font-medium text-muted-foreground">
+            Published
           </th>
           <th className="text-right px-4 py-2 font-medium text-muted-foreground">
             Chunks
@@ -262,6 +266,12 @@ function DocumentTable({
                 </div>
               )}
             </td>
+            <td
+              className="px-4 py-2.5 font-mono text-[10px] text-muted-foreground"
+              title={doc.file_id}
+            >
+              {doc.file_id.slice(0, 8)}
+            </td>
             <td className="px-4 py-2.5 font-mono text-muted-foreground text-[10px]">
               {doc.filename}
             </td>
@@ -279,8 +289,13 @@ function DocumentTable({
                         </span>
                       );
                     })
-                  : <span className="text-muted-foreground/40">—</span>}
+                  : <span className="text-muted-foreground/40">&mdash;</span>}
               </div>
+            </td>
+            <td className="px-4 py-2.5 text-muted-foreground">
+              {doc.publish_date
+                ? new Date(doc.publish_date).toLocaleDateString()
+                : <span className="text-muted-foreground/40">&mdash;</span>}
             </td>
             <td className="px-4 py-2.5 text-right tabular-nums">
               {doc.chunk_count}
@@ -322,6 +337,9 @@ function ChunkTable({
           <th className="text-left px-4 py-2 font-medium text-muted-foreground w-16">
             #
           </th>
+          <th className="text-left px-4 py-2 font-medium text-muted-foreground w-20">
+            Pages
+          </th>
           <th className="text-left px-4 py-2 font-medium text-muted-foreground">
             Text
           </th>
@@ -330,6 +348,12 @@ function ChunkTable({
       <tbody>
         {chunks.map((chunk) => {
           const isExpanded = expandedChunk === chunk.chunk_id;
+          const pageLabel =
+            chunk.page_start != null
+              ? chunk.page_start === chunk.page_end
+                ? `${chunk.page_start}`
+                : `${chunk.page_start}–${chunk.page_end}`
+              : null;
           return (
             <tr
               key={chunk.chunk_id}
@@ -338,6 +362,9 @@ function ChunkTable({
             >
               <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                 {chunk.chunk_index}
+              </td>
+              <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
+                {pageLabel ?? <span className="text-muted-foreground/40">&mdash;</span>}
               </td>
               <td className="px-4 py-2.5">
                 <AnimatePresence mode="wait" initial={false}>

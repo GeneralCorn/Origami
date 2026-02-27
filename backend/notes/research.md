@@ -325,3 +325,27 @@ Overall, energy-based reasoning reframes CoT as structured optimization over lat
 - Conducted across datasets including GSM8K, ASDiv-Aug, AQuA, StrategyQA, and DU.
 - Achieved an average improvement of +3.8% over SoftCoT in GSM8K.
 - These points provide a structured overview of the integration process, loss functions, model architecture, implementation challenges, and experimental outcomes related to EBM-CoT.
+
+
+## Research: summarize ingestion techniques for better rag, new file
+*2026-02-26 01:22*
+
+- Summary of Ingestion Techniques for Enhanced RAG System**
+- The advanced ingestion process for a Retrieval Augmented Generation (RAG) system integrates multimodal parsing strategies to handle diverse document types efficiently. The following techniques are employed:
+- 1. **Multimodal Parsing Strategies**:
+- FAST**: Utilizes Python libraries for extracting text and images from each page.
+- OCR**: Employs external models like AWS Textract for OCR tasks, aiding in text extraction or image description without text.
+- LLM (Large Language Models)**: Used alongside OCR to extract text, table content, and image information. Specifically, the Sonnet 3.5 v2 model from Anthropic Claude family is utilized for image processing.
+- 2. **Content Extraction**:
+- Extracts detailed descriptions of images based on their content type (plots, flowcharts) or provides textual alternatives.
+- Handles tables by mapping color codes and formatting markdown to enhance data organization.
+- 3. **Information Organization**:
+- Structures extracted information into nodes such as Page, Header, Text, Table, and Image for logical assembly.
+- Uses semantic splitting strategies to manage complex data structures effectively.
+- 4. **Markdown Formatting**:
+- Assembles extracted content into markdown files per page, ensuring clarity and readability through proper formatting.
+- 5. **Enhanced Metadata and Relationships**:
+- Incorporates metadata and establishes hierarchical relationships between information nodes for improved search retrieval efficiency.
+- 6. **Academic References**:
+- Demonstrated advanced capabilities in handling complex structures like second-level headers, enumerated lists, and mathematical formulas using LaTeX.
+- These techniques collectively enhance the RAG system's ability to process and organize diverse document types into structured markdown files, improving information retrieval through richer metadata and hierarchical data organization.

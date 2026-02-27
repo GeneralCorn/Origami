@@ -43,6 +43,7 @@ async def list_documents():
                 "title": meta.get("title", meta.get("filename", "unknown")),
                 "chunk_count": 0,
                 "tags": meta.get("tags", []),
+                "publish_date": meta.get("publish_date") or None,
             }
         docs[fid]["chunk_count"] += 1
 
@@ -68,6 +69,8 @@ async def get_document_chunks(file_id: str):
             "chunk_index": meta.get("chunk_index", i),
             "text": result["documents"][i] if result["documents"] else "",
             "original_text": meta.get("original_chunk", ""),
+            "page_start": meta.get("page_start"),
+            "page_end": meta.get("page_end"),
         })
     chunks.sort(key=lambda c: c["chunk_index"])
     return chunks
