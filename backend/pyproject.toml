@@ -13,6 +13,7 @@ dependencies = [
     "langchain-ollama>=1.0.1",
     "langgraph>=1.0.9",
     "pymupdf>=1.27.1",
+    "python-dotenv>=1.2.1",
     "python-multipart>=0.0.22",
     "rank-bm25>=0.2.2",
     "sentence-transformers>=3.0.0",

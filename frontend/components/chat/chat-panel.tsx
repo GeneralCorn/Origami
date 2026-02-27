@@ -151,11 +151,14 @@ export default function ChatPanel({
 
   // Auto-scroll to bottom on new messages (scroll the container, not the page)
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevMsgCount = useRef(0);
   useEffect(() => {
     const el = scrollRef.current;
-    if (el && messages.length > 0) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    }
+    if (!el || messages.length === 0) return;
+    // Instant jump when loading a chat (0 → many), smooth for incremental messages
+    const isLoad = prevMsgCount.current === 0 && messages.length > 1;
+    el.scrollTo({ top: el.scrollHeight, behavior: isLoad ? "instant" : "smooth" });
+    prevMsgCount.current = messages.length;
   }, [messages]);
 
   const handleSend = async (text: string) => {
@@ -163,6 +166,7 @@ export default function ChatPanel({
   };
 
   const switchChat = useCallback((id: string, title?: string) => {
+    prevMsgCount.current = 0;
     setMessages([]);
     setActiveChatId(id);
     setCurrentChatTitle(title || "New Chat");

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from starlette.responses import FileResponse
 
 from services.ingest import ingest_pdf, generate_title_from_pdf, extract_text_from_pdf, extract_publish_date, text_splitter
-from services.chroma import hash_bytes, find_by_hash, list_all_tags, delete_chunks, get_collection
+from services.chroma import hash_bytes, find_by_hash, list_all_tags, save_tag, delete_chunks, get_collection
 from services.text_utils import sanitize_filename
 
 router = APIRouter()
@@ -28,6 +28,10 @@ class ConfirmRequest(BaseModel):
     id: str
     name: str
     tags: list[str] = []
+
+
+class CreateTagRequest(BaseModel):
+    tag: str
 
 
 async def _process_pdf(
@@ -137,8 +141,18 @@ async def confirm_upload(req: ConfirmRequest, background_tasks: BackgroundTasks)
 
 @router.get("/tags")
 async def get_tags():
-    """Return all unique tags across all documents."""
+    """Return all unique tags across all documents + saved tags."""
     return list_all_tags()
+
+
+@router.post("/tags")
+async def create_tag(req: CreateTagRequest):
+    """Save a user-created tag so it persists for future uploads."""
+    tag = req.tag.strip().lower()
+    if not tag:
+        raise HTTPException(status_code=400, detail="Tag cannot be empty")
+    save_tag(tag)
+    return {"tag": tag}
 
 
 @router.get("/pdfs")

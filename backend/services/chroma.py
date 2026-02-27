@@ -5,16 +5,16 @@ in ChromaDB — there is no separate registry file.
 """
 
 import hashlib
+import json
 from pathlib import Path
 
 import chromadb
 
+from config import CHROMA_DIR, CHROMA_COLLECTION
 from services.embeddings import get_embedding_function
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
-CHROMA_DIR = _BACKEND_DIR / "chroma_data"
-COLLECTION_NAME = "documents"
-
+_TAGS_FILE = _BACKEND_DIR / "saved_tags.json"
 
 _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 _ef = get_embedding_function()
@@ -23,7 +23,7 @@ _ef = get_embedding_function()
 def get_collection() -> chromadb.Collection:
     """Get or create the ChromaDB collection with cosine similarity."""
     return _client.get_or_create_collection(
-        name=COLLECTION_NAME,
+        name=CHROMA_COLLECTION,
         metadata={"hnsw:space": "cosine"},
         embedding_function=_ef,
     )
@@ -52,15 +52,31 @@ def find_by_hash(content_hash: str) -> dict | None:
     return None
 
 
-def list_all_tags() -> list[str]:
-    """Collect all unique tags across all chunks, sorted alphabetically."""
-    col = get_collection()
-    if col.count() == 0:
+def _load_saved_tags() -> list[str]:
+    """Load user-saved tags from disk."""
+    if not _TAGS_FILE.exists():
         return []
-    results = col.get(include=["metadatas"])
-    tags: set[str] = set()
-    for meta in results["metadatas"] or []:
-        tags.update(meta.get("tags", []))
+    try:
+        return json.loads(_TAGS_FILE.read_text())
+    except Exception:
+        return []
+
+
+def save_tag(tag: str) -> None:
+    """Persist a user-created tag so it appears in future uploads."""
+    tags = set(_load_saved_tags())
+    tags.add(tag)
+    _TAGS_FILE.write_text(json.dumps(sorted(tags)))
+
+
+def list_all_tags() -> list[str]:
+    """Collect all unique tags across all chunks + saved tags, sorted."""
+    col = get_collection()
+    tags: set[str] = set(_load_saved_tags())
+    if col.count() > 0:
+        results = col.get(include=["metadatas"])
+        for meta in results["metadatas"] or []:
+            tags.update(meta.get("tags", []))
     return sorted(tags)
 
 

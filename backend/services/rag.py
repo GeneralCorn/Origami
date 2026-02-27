@@ -4,6 +4,7 @@ Vector search over contextualized chunks stored in ChromaDB.
 Embedding model is configured in services/embeddings.py (currently BAAI/bge-small-en-v1.5).
 """
 
+from ipaddress import collapse_addresses
 from typing import Any
 
 from services.chroma import get_collection
@@ -26,7 +27,6 @@ async def vector_search(
         {"text": str, "source": str, "score": float, "chunk_index": int}
     """
     collection = get_collection()
-
     if collection.count() == 0:
         return []
 

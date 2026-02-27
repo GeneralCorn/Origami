@@ -12,8 +12,12 @@ import {
   Check,
   Pencil,
 } from "lucide-react";
-import { fetchDocuments, fetchDocumentChunks, updateTitle } from "@/lib/api/documents";
-import { tagColor } from "@/lib/utils";
+import {
+  fetchDocuments,
+  fetchDocumentChunks,
+  updateTitle,
+} from "@/lib/api/documents";
+import { useTagColors } from "@/lib/tag-colors";
 import type { ChromaDocument, ChromaChunk } from "@/types";
 
 export default function DatabaseViewer() {
@@ -65,9 +69,10 @@ export default function DatabaseViewer() {
   const totalChunks = documents.reduce((s, d) => s + d.chunk_count, 0);
 
   const filteredDocs = search
-    ? documents.filter((d) =>
-        d.filename.toLowerCase().includes(search.toLowerCase()) ||
-        (d.title ?? "").toLowerCase().includes(search.toLowerCase())
+    ? documents.filter(
+        (d) =>
+          d.filename.toLowerCase().includes(search.toLowerCase()) ||
+          (d.title ?? "").toLowerCase().includes(search.toLowerCase()),
       )
     : documents;
 
@@ -75,7 +80,7 @@ export default function DatabaseViewer() {
     ? chunks.filter(
         (c) =>
           c.text.toLowerCase().includes(search.toLowerCase()) ||
-          c.original_text.toLowerCase().includes(search.toLowerCase())
+          c.original_text.toLowerCase().includes(search.toLowerCase()),
       )
     : chunks;
 
@@ -96,7 +101,9 @@ export default function DatabaseViewer() {
             <Database className="h-3.5 w-3.5 text-muted-foreground" />
           )}
           <span className="text-xs font-medium text-foreground truncate">
-            {selectedDoc ? (selectedDoc.title || selectedDoc.filename) : "Knowledge Base"}
+            {selectedDoc
+              ? selectedDoc.title || selectedDoc.filename
+              : "Knowledge Base"}
           </span>
           <span className="text-[10px] font-mono text-muted-foreground ml-1">
             {selectedDoc
@@ -118,9 +125,7 @@ export default function DatabaseViewer() {
         <Search className="h-3.5 w-3.5 text-muted-foreground mr-2" />
         <input
           type="text"
-          placeholder={
-            selectedDoc ? "Search chunks..." : "Search documents..."
-          }
+          placeholder={selectedDoc ? "Search chunks..." : "Search documents..."}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/50"
@@ -132,10 +137,7 @@ export default function DatabaseViewer() {
         {loading ? (
           <div className="px-4 py-6 space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-8 rounded bg-muted animate-pulse"
-              />
+              <div key={i} className="h-8 rounded bg-muted animate-pulse" />
             ))}
           </div>
         ) : selectedDoc ? (
@@ -151,7 +153,9 @@ export default function DatabaseViewer() {
             docs={filteredDocs}
             onSelect={handleSelectDoc}
             onTitleChange={(fileId, title) => {
-              setDocuments((prev) => prev.map((d) => d.file_id === fileId ? { ...d, title } : d));
+              setDocuments((prev) =>
+                prev.map((d) => (d.file_id === fileId ? { ...d, title } : d)),
+              );
               updateTitle(fileId, title).catch(() => loadDocuments());
             }}
           />
@@ -174,6 +178,7 @@ function DocumentTable({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const { getTagColor } = useTagColors();
 
   const saveTitle = (fileId: string) => {
     const trimmed = editValue.trim();
@@ -260,7 +265,11 @@ function DocumentTable({
                 >
                   <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="truncate">
-                    {doc.title || <span className="text-muted-foreground/40 italic">No title</span>}
+                    {doc.title || (
+                      <span className="text-muted-foreground/40 italic">
+                        No title
+                      </span>
+                    )}
                   </span>
                   <Pencil className="h-2.5 w-2.5 shrink-0 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors" />
                 </div>
@@ -277,25 +286,29 @@ function DocumentTable({
             </td>
             <td className="px-4 py-2.5">
               <div className="flex flex-wrap gap-1">
-                {doc.tags?.length > 0
-                  ? doc.tags.map((tag) => {
-                      const colors = tagColor(tag);
-                      return (
-                        <span
-                          key={tag}
-                          className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${colors.bg} ${colors.text}`}
-                        >
-                          {tag}
-                        </span>
-                      );
-                    })
-                  : <span className="text-muted-foreground/40">&mdash;</span>}
+                {doc.tags?.length > 0 ? (
+                  doc.tags.map((tag) => {
+                    const colors = getTagColor(tag);
+                    return (
+                      <span
+                        key={tag}
+                        className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${colors.bg} ${colors.text}`}
+                      >
+                        {tag}
+                      </span>
+                    );
+                  })
+                ) : (
+                  <span className="text-muted-foreground/40">&mdash;</span>
+                )}
               </div>
             </td>
             <td className="px-4 py-2.5 text-muted-foreground">
-              {doc.publish_date
-                ? new Date(doc.publish_date).toLocaleDateString()
-                : <span className="text-muted-foreground/40">&mdash;</span>}
+              {doc.publish_date ? (
+                new Date(doc.publish_date).toLocaleDateString()
+              ) : (
+                <span className="text-muted-foreground/40">&mdash;</span>
+              )}
             </td>
             <td className="px-4 py-2.5 text-right tabular-nums">
               {doc.chunk_count}
@@ -364,7 +377,9 @@ function ChunkTable({
                 {chunk.chunk_index}
               </td>
               <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                {pageLabel ?? <span className="text-muted-foreground/40">&mdash;</span>}
+                {pageLabel ?? (
+                  <span className="text-muted-foreground/40">&mdash;</span>
+                )}
               </td>
               <td className="px-4 py-2.5">
                 <AnimatePresence mode="wait" initial={false}>

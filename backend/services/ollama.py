@@ -3,13 +3,12 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
-OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "deepseek-r1:7b"
+from config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT
 
 
 async def stream_completion(
     messages: list[dict[str, str]],
-    model: str = DEFAULT_MODEL,
+    model: str = OLLAMA_MODEL,
 ) -> AsyncGenerator[dict[str, Any], None]:
     """
     Stream a chat completion from Ollama, parsing <think> tags into reasoning parts.
@@ -18,7 +17,7 @@ async def stream_completion(
         {"type": "reasoning", "content": "..."}
         {"type": "text", "content": "..."}
     """
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
         async with client.stream(
             "POST",
             f"{OLLAMA_URL}/api/chat",

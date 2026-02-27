@@ -25,6 +25,17 @@ export async function fetchTags(): Promise<string[]> {
   return response.json();
 }
 
+export async function saveTag(tag: string): Promise<void> {
+  const response = await fetch(`${API_URL}/api/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to save tag: ${response.statusText}`);
+  }
+}
+
 export async function confirmUpload(
   id: string,
   name: string,

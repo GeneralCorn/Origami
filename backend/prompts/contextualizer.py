@@ -1,11 +1,19 @@
-"""Prompt for contextual retrieval — generates context prefix for each PDF chunk."""
+"""Prompt for contextual retrieval — generates a compact context prefix for each PDF chunk."""
 
 CONTEXTUALIZER_PROMPT = """\
 <document>
 {whole_document}
 </document>
-Here is the chunk we want to situate within the whole document
+
 <chunk>
 {chunk_content}
 </chunk>
-Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
+
+Task: Write 1–2 sentences that situate the chunk within the overall document so it can be retrieved in isolation.
+
+Rules:
+- Use only information supported by the document/chunk. Do not speculate or add new claims.
+- Prefer concrete identifiers: section/topic, entities, method names, what is being defined/compared.
+- Do not evaluate (avoid “better/worse”, “improves”, etc.) unless explicitly stated in the chunk.
+- Output ONLY the context sentences. No bullets, no headings, no quotes, no extra text.
+"""

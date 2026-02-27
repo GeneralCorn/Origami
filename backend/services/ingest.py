@@ -21,17 +21,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from prompts import CONTEXTUALIZER_PROMPT
 from services.chroma import get_collection
+from config import OLLAMA_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
 from services.text_utils import strip_think_tags
 
 logger = logging.getLogger(__name__)
 
-CONTEXT_MODEL = "deepseek-r1:7b"
+CONTEXT_MODEL = OLLAMA_MODEL
 
-# Splitter tuned for a 16GB Mac running 7B models
-# ~800 tokens per chunk with 200 token overlap keeps context dense
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1200,
-    chunk_overlap=300,
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
     separators=["\n\n", "\n", ". ", " ", ""],
     length_function=len,
 )
@@ -235,7 +234,7 @@ async def ingest_pdf(
 
     # Step 3-5: Contextualize chunks and insert into ChromaDB incrementally
     collection = get_collection()
-    llm = ChatOllama(model=CONTEXT_MODEL, temperature=0)
+    llm = ChatOllama(model=CONTEXT_MODEL, temperature=0, num_predict=100)
     chunk_tags = tags or []
     ingested = 0
 

@@ -23,6 +23,7 @@ from langgraph.graph import StateGraph, END
 from prompts import ANALYZE_PROMPT, REVIEW_PROMPT, FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION
 from routes.notes import create_note_file, append_to_note
 from services.rag import vector_search
+from config import OLLAMA_MODEL
 from services.text_utils import strip_think_tags
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 NOTES_DIR = _BACKEND_DIR / "notes"
 NOTES_DIR.mkdir(exist_ok=True)
 
-AGENT_MODEL = "deepseek-r1:7b"
+AGENT_MODEL = OLLAMA_MODEL
 MAX_RESEARCH_LOOPS = 3
 
 
