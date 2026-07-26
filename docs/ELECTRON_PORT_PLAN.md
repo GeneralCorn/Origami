@@ -101,13 +101,61 @@ On density: the current interface is a research tool built around dense chat and
 
 ## 5. The launch page
 
-A single static light-mode page in the existing Next.js project, exported statically and hosted free.
+The existing Next.js project is exported statically and becomes the public site.
 
-Content: what Origami is in one line, a screenshot or short loop of the product, three or four capability points, an explicit local-first and privacy statement given what the product ingests, install instructions, and a GitHub link.
+### 5.1 Scope
 
-Constraints: light mode only, no dashboard chrome, no application interface elements, fast, no analytics beyond what is honest to run on an open-source project's landing page.
+**Decided 2026-07-26: one to four pages, no more.** A landing page, an FAQ, and one or two light documentation pages. This is a launch site, not a documentation platform. If documentation outgrows a couple of pages it belongs in the repository as markdown, where it stays next to the code that it describes.
 
-This is deliberately the last substantial phase. A launch page for software that cannot yet be installed is wasted work, and it will need rewriting once the product's actual shape settles.
+Landing page content: what Origami is in one line, a screenshot or short loop of the product, three or four capability points, an explicit local-first and privacy statement given what the product ingests, install instructions, and a GitHub link.
+
+### 5.2 The permanent constraint: no backend of any kind
+
+**Decided 2026-07-26: the site will never have authentication, login, accounts, or server-handled forms.**
+
+This is recorded as a standing constraint rather than a current state, because it is the fact that makes the hosting decision in §5.3 permanently correct instead of correct-for-now. A waitlist form, a newsletter signup, or any login would each require server compute and would reopen the question. None of them are planned.
+
+It also happens to be the honest posture for the product. A local-first tool whose entire pitch is that your data never leaves your machine should not ask visitors to create an account to read about it.
+
+### 5.3 Hosting: GitHub Pages
+
+**Decided 2026-07-26: GitHub Pages, not Vercel.** Given §5.2, the only meaningful advantage Vercel held was serverless functions for a future form, and there will be no form. GitHub Pages is free, lives in the same repository, adds no third-party account, and needs no build-skipping configuration.
+
+Vercel was evaluated and would also have worked. `[VERIFIED]` It supports deploying from a subdirectory through the Root Directory setting, and multiple projects can connect to one repository. The complication was that its automatic build-skipping requires JavaScript workspaces, and this repository's Python backend can never be a workspace member, so every backend commit would have counted as a global change and triggered a site rebuild. That was solvable through the Ignored Build Step, but it is configuration that GitHub Pages does not require at all.
+
+Required configuration, `[VERIFIED]` against the Next.js static export documentation:
+
+| Setting | Value | Reason |
+|---|---|---|
+| `output` | `'export'` | Emits `out/` with one HTML file per route |
+| `images.unoptimized` | `true` | The default image loader requires a server and is unsupported |
+| `basePath`, `assetPrefix` | `/Origami` | Project sites serve from a repository subpath, so links and assets need the prefix |
+| `trailingSlash` | `true` | Emits `/faq/index.html`, which static hosts resolve more predictably |
+| `public/.nojekyll` | empty file | GitHub Pages runs Jekyll, which ignores underscore-prefixed directories, and Next.js emits everything into `_next/`. Without this the site deploys successfully, renders unstyled, and 404s every asset. |
+
+`basePath` and `assetPrefix` become unnecessary if a custom domain is added later, since the site then serves from root.
+
+Next.js maintains an official [deploy-github-pages template](https://github.com/nextjs/deploy-github-pages), referenced from its static export documentation. Use it rather than assembling this configuration by hand.
+
+### 5.4 One prerequisite in the current code
+
+`[VERIFIED]` Route Handlers that read from `Request` are unsupported in static export, and `frontend/app/api/chat` is exactly that.
+
+This costs nothing, because §3.5 already deletes it: the desktop renderer moves to Vite and talks to the Python sidecar directly, leaving the Next.js API route with no purpose. It does mean the launch site conversion and the `app/api/chat` deletion are one piece of work rather than two.
+
+Nothing else on the unsupported list, meaning redirects, headers, rewrites, cookies, Server Actions, and incremental static regeneration, is reachable from a site of this scope.
+
+### 5.5 Static does not mean plain
+
+Worth stating because the two get conflated. Static describes where computation happens, not how the page looks. Animation, scroll-linked motion, WebGL, and interactive demos all execute in the visitor's browser and are unaffected by the absence of a server.
+
+The dependencies for this are already present in `frontend/package.json`: `motion` 12.34.3 for animation, Tailwind 4, and the Radix and shadcn primitives. Nothing needs adding.
+
+Two design constraints carry over: light mode only, and no application chrome, since a landing page that looks like a dashboard reads as a screenshot rather than a pitch. Note that light backgrounds are the harder surface to make feel premium, because they expose spacing and alignment errors that dark backgrounds hide. The quality will come from typography and restraint rather than effects. Motion should respect `prefers-reduced-motion`, which is both correct and a competence signal to a developer audience.
+
+### 5.6 Why this is last
+
+A launch site for software nobody can install yet is wasted work, and it would need rewriting once the product's shape settles. Phase 8 is deliberate.
 
 ---
 
@@ -174,6 +222,7 @@ CodeMirror 6, markdown as source of truth, the interface redesign. After the run
 - **No hosted cloud tier yet.** It is in the product brief as "eventually," and it should stay there. Every architectural decision here keeps it possible, chiefly the per-segment `embedding_model` field, without any of them assuming it.
 - **No Windows or Linux build.** The permission model, the sidecar packaging, and the highest-value connectors are all macOS-specific. Adding a second platform before the first one ships would double the surface for no user.
 - **No redesign before the port lands.** Phase 7 is late on purpose.
+- **No accounts, login, or server-handled forms on the public site, ever.** Per §5.2 this is a standing constraint rather than a current state, and it is what keeps the GitHub Pages decision correct permanently rather than only for now.
 
 ---
 
