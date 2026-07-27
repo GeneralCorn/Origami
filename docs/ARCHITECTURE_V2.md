@@ -143,7 +143,7 @@ The ordering is chosen so that each step leaves a working system, and so that th
 1. **Schema first, with provenance.** Introduce Item and Segment, and write provenance on every write path. Do this before any new connector exists. This is the step that cannot be reordered, because every later step writes data that would otherwise need re-ingesting.
 2. **Migrate the existing PDF path onto the schema.** No behaviour change, no new sources. Existing documents become Items with `origin: self`. This proves the schema against the one pipeline that already works.
 3. **Add `embedding_model` and backfill it** with the current model for all existing segments. Cheap now, and it unblocks the `fastembed` swap.
-4. **Fold in the uncommitted screenshot and vision work.** That branch already produces exactly the shape §2 describes: an artifact with generated text about it. It is the natural first non-document Item and it is already written.
+4. **Migrate the screenshot and vision path onto the schema.** It produces exactly the shape §2 describes, an artifact with generated text about it, so it is the natural first non-document Item. Note that this work lands in the repository *before* step 1, as a prerequisite to the port itself; see the port plan §6. What happens here is migrating it onto the schema, not writing it.
 5. **Snippet capture.** The simplest new source, no third party, no permissions. Validates the ingest path end to end.
 6. **First permissioned local source: Calendar.** This is where the macOS TCC work in the port plan gets proven, and per `INTEGRATIONS_RESEARCH.md` §4 the failure mode is silent, so it needs to be first among permissioned sources rather than later.
 7. **Everything else**, in the order the integrations matrix allows.
