@@ -155,13 +155,23 @@ Two design constraints carry over: light mode only, and no application chrome, s
 
 ### 5.6 Why this is last
 
-A launch site for software nobody can install yet is wasted work, and it would need rewriting once the product's shape settles. Phase 8 is deliberate.
+A launch site for software nobody can install yet is wasted work, and it would need rewriting once the product's shape settles. Phase 7 is deliberate.
 
 ---
 
 ## 6. Phase sequence
 
 Each phase leaves a working system. Phases 0 through 2 change no user-visible behaviour.
+
+### Prerequisite: land the in-flight vision and digest work
+
+**Corrected 2026-07-27.** An earlier draft of this plan scheduled this as Phase 4, after the schema work. That was wrong, and the error was assuming the vision branch was committed somewhere. It is not. It is an uncommitted working tree, and that changes the ordering for three reasons:
+
+1. **Phase 0's scope is incomplete without it.** Two of the seven data directories Phase 0 must relocate, `SCREENSHOTS_DIR` and `DIGESTS_DIR`, exist only in that uncommitted tree. Doing Phase 0 from `main` would relocate five, and the vision work would then land introducing two more in the old style, forcing the same refactor twice.
+2. **`config.py` conflicts otherwise.** The uncommitted diff already restructures that file, and Phase 0 restructures it again.
+3. **Uncommitted work is unbacked work.** Twenty-nine changed files with no stash and no branch is one careless checkout away from gone.
+
+Land it as-is. Three known issues are documented in `.planning/codebase/CONCERNS.md`, namely the digest regex breaking on parentheses in titles, the per-request Ollama health check, and the missing upload size limit. None should block landing. File them as issues and fix them later; the code being safe in git is worth more than the code being perfect before it is.
 
 ### Phase 0: portable backend
 
@@ -194,23 +204,19 @@ At the end of Phase 2 there is a signed, installable application with the curren
 
 This is placed after packaging and before any connector because it is the irreversible step. Every connector built before it would need re-ingesting after it.
 
-### Phase 4: land the in-flight vision work
-
-Fold the uncommitted screenshot, vision, and digest branch onto the new schema. It is already written and it is the natural first non-document Item.
-
-### Phase 5: cost controls
+### Phase 4: cost controls
 
 The four levers in `COST_MODEL.md` §3. Tool-definition pruning, the no-polling-with-full-context rule, difficulty-based model routing, and difficulty-based loop bounds. Instrument first so the savings are measured rather than assumed.
 
-### Phase 6: connectors
+### Phase 5: connectors
 
 In the order `ARCHITECTURE_V2.md` §7 sets out: snippets, then Calendar as the first permissioned local source, then the rest of the matrix. Calendar goes first among permissioned sources specifically because its failure mode is silent, so it exercises the §3.3 machinery while the context is fresh.
 
-### Phase 7: editor and density redesign
+### Phase 6: editor and density redesign
 
 CodeMirror 6, markdown as source of truth, the interface redesign. After the runtime is stable, not during.
 
-### Phase 8: launch page
+### Phase 7: launch site
 
 §5.
 
@@ -221,7 +227,7 @@ CodeMirror 6, markdown as source of truth, the interface redesign. After the run
 - **No Discord, WhatsApp, or Google Photos API integration.** Per `INTEGRATIONS_RESEARCH.md`, the first two are bannable and the third no longer has a library-read API. Apple Photos is the primary photo surface via PhotoKit; Google Photos is served by Takeout import only, and the Picker API is explicitly not being built.
 - **No hosted cloud tier yet.** It is in the product brief as "eventually," and it should stay there. Every architectural decision here keeps it possible, chiefly the per-segment `embedding_model` field, without any of them assuming it.
 - **No Windows or Linux build.** The permission model, the sidecar packaging, and the highest-value connectors are all macOS-specific. Adding a second platform before the first one ships would double the surface for no user.
-- **No redesign before the port lands.** Phase 7 is late on purpose.
+- **No redesign before the port lands.** Phase 6 is late on purpose.
 - **No accounts, login, or server-handled forms on the public site, ever.** Per §5.2 this is a standing constraint rather than a current state, and it is what keeps the GitHub Pages decision correct permanently rather than only for now.
 
 ---
@@ -232,7 +238,7 @@ CodeMirror 6, markdown as source of truth, the interface redesign. After the run
 |---|---|---|---|
 | 1 | Does Full Disk Access follow responsible-process attribution for child processes? | iMessage connector | §3.3, resolve in Phase 2 |
 | 2 | How far do quantized `fastembed` vectors diverge from the current ones? | Nothing, once `embedding_model` is recorded | `ARCHITECTURE_V2.md` §5, check in Phase 0 |
-| 3 | Does CodeMirror 6 handle inline mixed media acceptably? | Editor choice | §4, spike before Phase 7 |
+| 3 | Does CodeMirror 6 handle inline mixed media acceptably? | Editor choice | §4, spike before Phase 6 |
 | 4 | Is the taint rule ergonomically tolerable? | Connector UX | `ARCHITECTURE_V2.md` §3 |
 | 5 | Are Google Takeout photo exports practical at personal scale? | The entire Google Photos story, since Takeout is now the only path | `INTEGRATIONS_RESEARCH.md` §3 |
 | 6 | Can target users create internal Slack apps in their workspaces? | Slack onboarding | `INTEGRATIONS_RESEARCH.md` §2 |
