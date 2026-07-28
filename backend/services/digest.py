@@ -13,8 +13,6 @@ from config import DIGESTS_DIR
 
 logger = logging.getLogger(__name__)
 
-DIGESTS_DIR.mkdir(exist_ok=True)
-
 # Categories that map to ## headings (order preserved in file)
 CATEGORY_ORDER = [
     "news", "social_media", "code", "documentation",

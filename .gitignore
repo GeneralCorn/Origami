@@ -30,6 +30,9 @@ chroma_data/
 uploads/
 chats/
 
+# embedding model cache (fastembed)
+backend/models/
+
 # runtime data (kept tracked temporarily for easy sync)
 # backend/notes/
 # backend/pdfs/

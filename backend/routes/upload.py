@@ -8,20 +8,13 @@ from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from starlette.responses import FileResponse
 
+from config import UPLOADS_DIR, PDFS_DIR
 from services.ingest import ingest_pdf, generate_title_from_pdf, extract_text_from_pdf, extract_publish_date, text_splitter
 from services.chroma import hash_bytes, find_by_hash, list_all_tags, save_tag, delete_chunks, get_collection
 from services.text_utils import sanitize_filename
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-
-UPLOAD_DIR = _BACKEND_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-PDFS_DIR = _BACKEND_DIR / "pdfs"
-PDFS_DIR.mkdir(exist_ok=True)
 
 
 class ConfirmRequest(BaseModel):
@@ -58,7 +51,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     Does NOT start ingestion -- call /api/upload/confirm to finalize.
     """
     file_id = str(uuid.uuid4())
-    file_path = UPLOAD_DIR / f"{file_id}.pdf"
+    file_path = UPLOADS_DIR / f"{file_id}.pdf"
 
     content = await file.read()
     file_path.write_bytes(content)
@@ -93,7 +86,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 @router.post("/upload/confirm")
 async def confirm_upload(req: ConfirmRequest, background_tasks: BackgroundTasks):
     """Confirm the upload with a chosen name, copy to pdfs/, and start ingestion."""
-    temp_path = UPLOAD_DIR / f"{req.id}.pdf"
+    temp_path = UPLOADS_DIR / f"{req.id}.pdf"
     if not temp_path.exists():
         raise HTTPException(status_code=404, detail="Upload not found")
 
