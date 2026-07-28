@@ -97,11 +97,9 @@ def set_tags(file_id: str, tags: list[str]) -> bool:
     results = col.get(where={"file_id": file_id}, include=["metadatas"])
     if not results["ids"]:
         return False
-    updated_metadatas = []
     for meta in results["metadatas"]:
         meta["tags"] = tags
-        updated_metadatas.append(meta)
-    col.update(ids=results["ids"], metadatas=updated_metadatas)
+    col.update(ids=results["ids"], metadatas=results["metadatas"])
     return True
 
 

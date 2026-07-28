@@ -19,6 +19,7 @@ from routes.chats import router as chats_router
 from routes.documents import router as documents_router
 from routes.notes import router as notes_router
 from routes.upload import router as upload_router
+from routes.screenshots import router as screenshots_router
 
 app = FastAPI(title="Origami API", version="0.1.0")
 
@@ -35,6 +36,7 @@ app.include_router(chats_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
+app.include_router(screenshots_router, prefix="/api")
 
 
 @app.get("/health")

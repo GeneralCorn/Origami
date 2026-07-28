@@ -17,13 +17,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypedDict
 
-from langchain_ollama import ChatOllama
+from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, END
 
-from prompts import ANALYZE_PROMPT, REVIEW_PROMPT, FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION
+from prompts import ANALYZE_PROMPT, REVIEW_PROMPT, FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION, CLASSIFY_PROMPT, FAST_FACT_PROMPT
 from routes.notes import create_note_file, append_to_note
 from services.rag import vector_search
-from config import OLLAMA_MODEL
+from config import ANTHROPIC_API_KEY, HAIKU_MODEL, SONNET_MODEL
 from services.text_utils import strip_think_tags
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,20 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent
 NOTES_DIR = _BACKEND_DIR / "notes"
 NOTES_DIR.mkdir(exist_ok=True)
 
-AGENT_MODEL = OLLAMA_MODEL
 MAX_RESEARCH_LOOPS = 3
+
+# Loops per route type
+_LOOPS_BY_ROUTE = {
+    "fast_fact": 0,
+    "normal_rag": 1,
+    "deep_research": 3,
+}
+
+# Short greetings and tokens that are always FAST_FACT without an LLM call
+_FAST_FACT_TOKENS = frozenset({
+    "hi", "hello", "hey", "thanks", "thank you", "ok", "okay", "sure",
+    "got it", "great", "cool", "nice", "yes", "no", "yep", "nope",
+})
 
 
 class ResearchState(TypedDict):
@@ -51,6 +63,9 @@ class ResearchState(TypedDict):
     active_note_title: str
     active_note_id: str | None
     scope: list[str] | None
+    # Routing
+    route: str          # "fast_fact" | "normal_rag" | "deep_research"
+    max_loops: int      # per-route cap passed into review_node
     # Observability accumulators
     total_input_tokens: int
     total_output_tokens: int
@@ -113,7 +128,7 @@ async def analyze_node(state: ResearchState) -> ResearchState:
         return state
 
     t0 = time.perf_counter()
-    llm = ChatOllama(model=AGENT_MODEL, temperature=0, num_predict=2048)
+    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=2048)
 
     chunks_text = "\n\n---\n\n".join(state["retrieved_chunks"])
     current_notes = "\n".join(f"- {n}" for n in state["research_notes"]) if state["research_notes"] else "None yet."
@@ -189,9 +204,9 @@ async def review_node(state: ResearchState) -> ResearchState:
     t0 = time.perf_counter()
     state["loop_count"] += 1
 
-    if state["loop_count"] >= MAX_RESEARCH_LOOPS:
+    if state["loop_count"] >= state.get("max_loops", MAX_RESEARCH_LOOPS):
         state["is_complete"] = True
-        logger.info("[LATENCY] review_node: skipped (max loops reached)")
+        logger.info("[LATENCY] review_node: skipped (max loops reached, route=%s)", state.get("route", "?"))
         return state
 
     if not state["research_notes"]:
@@ -199,7 +214,7 @@ async def review_node(state: ResearchState) -> ResearchState:
         logger.info("[LATENCY] review_node: skipped (no research notes)")
         return state
 
-    llm = ChatOllama(model=AGENT_MODEL, temperature=0, num_predict=1024)
+    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=1024)
     notes_text = "\n".join(f"- {n}" for n in state["research_notes"])
 
     prompt = REVIEW_PROMPT.format(
@@ -406,7 +421,7 @@ def _extract_json(text: str) -> dict | None:
 async def final_response_node(state: ResearchState) -> ResearchState:
     """Synthesize a final answer from all research notes + conversation context."""
     t0 = time.perf_counter()
-    llm = ChatOllama(model=AGENT_MODEL, temperature=0.3, num_predict=4096)
+    llm = ChatAnthropic(model=SONNET_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0.3, max_tokens=4096)
 
     notes_text = "\n".join(f"- {n}" for n in state["research_notes"]) if state["research_notes"] else "No specific research findings."
     history = "\n".join(f"{m['role']}: {m['content']}" for m in state["messages"][-6:])
@@ -511,6 +526,88 @@ async def final_response_node(state: ResearchState) -> ResearchState:
     return state
 
 
+# -- Routing ----------------------------------------------------------------
+
+
+async def classify_query(
+    query: str,
+    history: str,
+    note_preview: str,
+) -> str:
+    """Classify query into fast_fact | normal_rag | deep_research.
+
+    Uses cheap heuristics first, falls back to Haiku for ambiguous cases.
+    Returns one of: 'fast_fact', 'normal_rag', 'deep_research'.
+    """
+    q = query.strip().lower()
+
+    # Heuristic: obvious conversational tokens
+    if q in _FAST_FACT_TOKENS or len(q) < 12:
+        logger.info("[ROUTE] heuristic → fast_fact (short/greeting)")
+        return "fast_fact"
+
+    # Heuristic: explicit deep-research keywords
+    deep_keywords = ("compare", "synthesize", "across all", "literature", "comprehensive", "all papers")
+    if any(k in q for k in deep_keywords):
+        logger.info("[ROUTE] heuristic → deep_research (keyword match)")
+        return "deep_research"
+
+    # LLM classifier for everything else
+    t0 = time.perf_counter()
+    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=10)
+    prompt = CLASSIFY_PROMPT.format(history=history, note_preview=note_preview[:500], query=query)
+    response = await llm.ainvoke(prompt)
+    text = (response.content or "").strip().upper()
+    latency = time.perf_counter() - t0
+    logger.info("[ROUTE] LLM classifier → %s (%.3fs)", text, latency)
+
+    if "FAST_FACT" in text:
+        return "fast_fact"
+    if "DEEP_RESEARCH" in text:
+        return "deep_research"
+    return "normal_rag"
+
+
+async def _stream_fast_fact(
+    query: str,
+    history: str,
+    note: str,
+):
+    """Bypass retrieval entirely — answer directly from context using Haiku."""
+    note_section = f"User's current note:\n{note[:1500]}\n" if note.strip() else ""
+    prompt = FAST_FACT_PROMPT.format(
+        history=history,
+        note_section=note_section,
+        query=query,
+    )
+
+    t0 = time.perf_counter()
+    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0.3, max_tokens=1024)
+    response = await llm.ainvoke(prompt)
+    latency = time.perf_counter() - t0
+    usage = _extract_usage(response)
+
+    answer = response.content
+    if isinstance(answer, str):
+        answer = strip_think_tags(answer)
+
+    logger.info("[ROUTE] fast_fact response: %.3fs (%d in / %d out tokens)", latency, usage["input_tokens"], usage["output_tokens"])
+
+    yield {
+        "type": "text",
+        "content": answer or "I couldn't generate a response.",
+        "meta": {
+            "latency_s": round(latency, 2),
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "total_input_tokens": usage["input_tokens"],
+            "total_output_tokens": usage["output_tokens"],
+            "total_latency_s": round(latency, 2),
+            "route": "fast_fact",
+        },
+    }
+
+
 # -- Graph ------------------------------------------------------------------
 
 
@@ -569,6 +666,10 @@ async def run_research_agent(
             user_query = msg["content"]
             break
 
+    history = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:])
+    route = await classify_query(user_query, history, current_note)
+    max_loops = _LOOPS_BY_ROUTE.get(route, 1)
+
     initial_state: ResearchState = {
         "messages": messages,
         "current_note": current_note,
@@ -583,6 +684,8 @@ async def run_research_agent(
         "active_note_title": active_note_title,
         "active_note_id": active_note_id,
         "scope": scope,
+        "route": route,
+        "max_loops": max_loops,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
         "final_latency_s": 0.0,
@@ -614,6 +717,16 @@ async def stream_research_agent(
             user_query = msg["content"]
             break
 
+    history = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:])
+    route = await classify_query(user_query, history, current_note)
+    max_loops = _LOOPS_BY_ROUTE.get(route, 1)
+
+    # Fast-fact: skip the graph entirely
+    if route == "fast_fact":
+        async for event in _stream_fast_fact(user_query, history, current_note):
+            yield event
+        return
+
     initial_state: ResearchState = {
         "messages": messages,
         "current_note": current_note,
@@ -628,6 +741,8 @@ async def stream_research_agent(
         "active_note_title": active_note_title,
         "active_note_id": active_note_id,
         "scope": scope,
+        "route": route,
+        "max_loops": max_loops,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
         "final_latency_s": 0.0,
@@ -637,6 +752,7 @@ async def stream_research_agent(
 
     last_event_count = 0
     t_pipeline = time.perf_counter()
+    logger.info("[ROUTE] %s → max_loops=%d", route, max_loops)
 
     async for state_update in research_agent.astream(initial_state):
         # Each state_update is a dict of {node_name: updated_state}
@@ -665,6 +781,7 @@ async def stream_research_agent(
                         "total_input_tokens": node_state.get("total_input_tokens", 0),
                         "total_output_tokens": node_state.get("total_output_tokens", 0),
                         "total_latency_s": round(time.perf_counter() - t_pipeline, 2),
+                        "route": node_state.get("route", "normal_rag"),
                     },
                 }
 

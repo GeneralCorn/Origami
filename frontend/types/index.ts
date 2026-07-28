@@ -1,11 +1,3 @@
-export interface Document {
-  id: string;
-  name: string;
-  uploadedAt: Date;
-  size: number;
-  status: "uploading" | "processing" | "ready" | "error";
-}
-
 export interface UploadResponse {
   id: string;
   filename: string;
@@ -45,4 +37,34 @@ export interface NoteFile {
   id: string;
   title: string;
   updated_at: string;
+}
+
+export interface DigestSummary {
+  week: string;
+  label: string;
+  entry_count: number;
+  needs_review: number;
+}
+
+export interface DigestContent {
+  week: string;
+  content: string;
+}
+
+export interface ProcessResult {
+  processed: number;
+  needs_review: number;
+  results: Array<{
+    filename: string;
+    title?: string;
+    category?: string;
+    confidence?: string;
+    error?: string;
+  }>;
+}
+
+export interface PendingScreenshot {
+  filename: string;
+  size: number;
+  uploaded_at: string;
 }

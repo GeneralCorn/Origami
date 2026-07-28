@@ -8,7 +8,7 @@ from prompts.analyze import ANALYZE_PROMPT
 from prompts.review import REVIEW_PROMPT
 from prompts.final_response import FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION
 from prompts.contextualizer import CONTEXTUALIZER_PROMPT
-from prompts.title import TITLE_PROMPT
+from prompts.classify import CLASSIFY_PROMPT, FAST_FACT_PROMPT
 
 __all__ = [
     "ANALYZE_PROMPT",
@@ -17,5 +17,6 @@ __all__ = [
     "CHAT_ONLY_INSTRUCTION",
     "EDIT_ALLOWED_INSTRUCTION",
     "CONTEXTUALIZER_PROMPT",
-    "TITLE_PROMPT",
+    "CLASSIFY_PROMPT",
+    "FAST_FACT_PROMPT",
 ]

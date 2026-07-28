@@ -16,17 +16,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pymupdf
-from langchain_ollama import ChatOllama
+from langchain_anthropic import ChatAnthropic
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from prompts import CONTEXTUALIZER_PROMPT
 from services.chroma import get_collection
-from config import OLLAMA_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
+from config import ANTHROPIC_API_KEY, HAIKU_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
 from services.text_utils import strip_think_tags
 
 logger = logging.getLogger(__name__)
 
-CONTEXT_MODEL = OLLAMA_MODEL
+CONTEXT_MODEL = HAIKU_MODEL
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE,
@@ -117,7 +117,7 @@ def _page_range(chunk_start: int, chunk_end: int, page_offsets: list[int]) -> tu
 
 
 async def contextualize_chunk(
-    llm: ChatOllama,
+    llm: ChatAnthropic,
     whole_document: str,
     chunk_content: str,
 ) -> str:
@@ -234,11 +234,11 @@ async def ingest_pdf(
 
     # Step 3-5: Contextualize chunks and insert into ChromaDB incrementally
     collection = get_collection()
-    llm = ChatOllama(model=CONTEXT_MODEL, temperature=0, num_predict=100)
+    llm = ChatAnthropic(model=CONTEXT_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=100)
     chunk_tags = tags or []
     ingested = 0
 
-    # Semaphore limits concurrent Ollama requests to avoid overwhelming the server
+    # Semaphore limits concurrent API requests
     sem = asyncio.Semaphore(4)
 
     async def _contextualize_and_insert(i: int, chunk: str) -> None:

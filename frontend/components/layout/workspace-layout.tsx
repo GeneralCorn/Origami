@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "motion/react";
 import { motion } from "motion/react";
-import { PanelLeft, Database, MessageSquare, ChevronLeft, ChevronRight, Palette, Sun, Moon, Check } from "lucide-react";
+import { PanelLeft, Database, Calendar, ChevronLeft, Palette, Sun, Moon, Check } from "lucide-react";
 import { useTheme, type Theme } from "@/lib/theme";
 import {
   ResizableHandle,
@@ -328,8 +328,17 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
         <div className="ml-auto flex items-center gap-1">
           <motion.button
             whileTap={{ scale: 0.98 }}
+            onClick={() => router.push("/digest")}
+            className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+            title="Weekly Digest"
+          >
+            <Calendar className="h-5 w-5" />
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.98 }}
             onClick={() => router.push("/database")}
             className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+            title="Knowledge Base"
           >
             <Database className="h-5 w-5" />
           </motion.button>
