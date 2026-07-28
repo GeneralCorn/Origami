@@ -35,6 +35,11 @@ for _dir in (
 HOST: str = os.getenv("ORIGAMI_HOST", "127.0.0.1")
 PORT: int = int(os.getenv("ORIGAMI_PORT", "8000"))
 
+# Optional shared secret. When set, every request must carry it as a
+# Bearer token (or ?token= for resources loaded via src attributes).
+# Unset, no auth is enforced and the plain dev workflow is unchanged.
+AUTH_TOKEN: str = os.getenv("ORIGAMI_AUTH_TOKEN", "")
+
 # ── Anthropic ────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 HAIKU_MODEL: str = os.getenv("HAIKU_MODEL", "claude-haiku-4-5-20251001")

@@ -1,4 +1,5 @@
 import logging
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -7,13 +8,14 @@ from dotenv import load_dotenv
 _env_file = Path(__file__).resolve().parent / ".env.local"
 load_dotenv(_env_file)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Ensure [LATENCY] logs from agent + chat are visible
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-from config import FRONTEND_URL, EXTRA_ALLOWED_ORIGINS
+from config import FRONTEND_URL, EXTRA_ALLOWED_ORIGINS, AUTH_TOKEN
 from routes.chat import router as chat_router
 from routes.chats import router as chats_router
 from routes.documents import router as documents_router
@@ -23,6 +25,28 @@ from routes.screenshots import router as screenshots_router
 
 app = FastAPI(title="Origami API", version="0.1.0")
 
+
+if AUTH_TOKEN:
+
+    @app.middleware("http")
+    async def require_auth_token(request: Request, call_next):
+        """Reject any request that lacks the launch-scoped shared secret.
+
+        The token arrives as `Authorization: Bearer <token>` from fetch
+        calls, or as a `token` query parameter for resources the browser
+        loads via src attributes (images, the PDF iframe).
+        """
+        header = request.headers.get("authorization", "")
+        provided = header[7:] if header.startswith("Bearer ") else ""
+        if not provided:
+            provided = request.query_params.get("token", "")
+        if not secrets.compare_digest(provided, AUTH_TOKEN):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+# Added after the auth middleware so CORS wraps it: preflights are
+# answered before auth runs and 401 responses still carry CORS headers.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_URL, *EXTRA_ALLOWED_ORIGINS],
