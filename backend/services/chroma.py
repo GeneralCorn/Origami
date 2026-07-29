@@ -10,6 +10,7 @@ import logging
 import threading
 
 import chromadb
+from chromadb.config import Settings
 
 from config import CHROMA_DIR, CHROMA_COLLECTION, SAVED_TAGS_FILE
 from services.embeddings import get_embedding_function
@@ -17,7 +18,14 @@ from services.migrate import repair_embedding_function
 
 logger = logging.getLogger(__name__)
 
-_client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+# Chroma posts anonymized usage telemetry to PostHog unless told not to.
+# A knowledge base whose contents never leave the machine must not ship a
+# dependency that phones home, so this is off by construction rather than
+# by a setting the user has to find.
+_client = chromadb.PersistentClient(
+    path=str(CHROMA_DIR),
+    settings=Settings(anonymized_telemetry=False),
+)
 _ef = get_embedding_function()
 
 _repair_lock = threading.Lock()
