@@ -12,7 +12,9 @@
     "typecheck": "tsc -p tsconfig.json",
     "start": "electron .",
     "smoke": "npm run build:main && electron . --smoke-test",
-    "bundle:python": "node scripts/bundle-python.mjs"
+    "bundle:python": "node scripts/bundle-python.mjs",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.99",
