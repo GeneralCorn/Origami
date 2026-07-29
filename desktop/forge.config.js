@@ -26,8 +26,8 @@ const USAGE_DESCRIPTIONS = {
     "Origami reads your contacts so messages and events show the names of the people involved instead of phone numbers and email addresses. The index is stored on this Mac.",
 };
 
-function run(command, args) {
-  execFileSync(command, args, { cwd: ROOT, stdio: "inherit" });
+function run(command, args, env) {
+  execFileSync(command, args, { cwd: ROOT, stdio: "inherit", env: { ...process.env, ...env } });
 }
 
 module.exports = {
@@ -64,11 +64,13 @@ module.exports = {
     },
   ],
   hooks: {
-    generateAssets: async () => {
+    generateAssets: async (_forgeConfig, _platform, arch) => {
       process.stdout.write(`${describeSigning()}\n`);
       run("npm", ["run", "build:main"]);
       run("npm", ["run", "build:renderer"]);
-      run("node", ["scripts/bundle-python.mjs"]);
+      // The interpreter is architecture-specific, so a cross-build has to
+      // fetch the matching one rather than the host's.
+      run("node", ["scripts/bundle-python.mjs"], arch ? { ORIGAMI_TARGET_ARCH: arch } : undefined);
     },
   },
 };
