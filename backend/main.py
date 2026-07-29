@@ -27,6 +27,7 @@ app = FastAPI(title="Origami API", version="0.1.0")
 
 
 if AUTH_TOKEN:
+    _AUTH_TOKEN_BYTES = AUTH_TOKEN.encode("utf-8")
 
     @app.middleware("http")
     async def require_auth_token(request: Request, call_next):
@@ -40,7 +41,9 @@ if AUTH_TOKEN:
         provided = header[7:] if header.startswith("Bearer ") else ""
         if not provided:
             provided = request.query_params.get("token", "")
-        if not secrets.compare_digest(provided, AUTH_TOKEN):
+        # Compared as bytes: compare_digest raises TypeError on str inputs
+        # holding non-ASCII, and `provided` is caller-controlled.
+        if not secrets.compare_digest(provided.encode("utf-8"), _AUTH_TOKEN_BYTES):
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return await call_next(request)
 
