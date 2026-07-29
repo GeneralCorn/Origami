@@ -20,15 +20,15 @@ Dark Theme:
 ## What works today
 
 - **PDF ingestion** with a Contextual Retrieval pipeline. Every chunk gets a short LLM-generated blurb situating it in the whole document before embedding, which meaningfully improves retrieval over naive chunking.
-- **Hybrid search** over ChromaDB, combining dense vectors with BM25.
+- **Vector search** over ChromaDB, ranking contextualized chunks by cosine similarity.
 - **A LangGraph research agent** that plans, retrieves, reviews its own findings, and loops until it has enough to answer.
 - **Markdown notes**, editable alongside the chat and usable as agent context.
 - **Streaming chat** over the Vercel AI SDK protocol, including visible reasoning.
-- **Fully local.** Ollama does the generation, `bge-small-en-v1.5` does the embeddings, Chroma stores them on disk.
+- **Your corpus stays on disk.** `bge-small-en-v1.5` does the embeddings locally and Chroma stores them on your machine. Nothing is uploaded and there is no account.
 
-The Contextual Retrieval implementation follows Anthropic's published method but runs entirely against a local model. There is no cloud dependency anywhere in the current stack.
+Reasoning currently runs on Anthropic's API and needs your own key: the agent calls Claude Haiku and Sonnet for planning, retrieval review, and answers, which means retrieved passages are sent to Anthropic on those turns. Ingestion, embedding, and storage stay local. Restoring a local generation path is on the roadmap below, and until it lands, treat "local" as describing where your data lives rather than where inference happens.
 
-**Stack:** FastAPI + LangGraph + ChromaDB + Ollama (backend), Next.js 16 + React 19 + AI SDK v6 (frontend)
+**Stack:** FastAPI + LangGraph + ChromaDB (backend), Next.js 16 + React 19 + AI SDK v6 (frontend)
 
 ## Roadmap
 
@@ -190,7 +190,7 @@ Origami/
 │   ├── services/
 │   │   ├── agent.py      # LangGraph research agent
 │   │   ├── ingest.py     # Contextual Retrieval pipeline
-│   │   ├── rag.py        # Hybrid dense + BM25 search
+│   │   ├── rag.py        # Dense vector search
 │   │   ├── chroma.py     # Vector store access
 │   │   ├── embeddings.py # bge-small-en-v1.5
 │   │   └── ollama.py     # Local LLM streaming
