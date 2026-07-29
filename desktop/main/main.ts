@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 
+import { resolveBackendLaunch } from "./backend-launch";
 import { startSidecar, type Sidecar } from "./sidecar";
 
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
@@ -17,7 +18,6 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL ?? "";
 const EXTERNAL_BACKEND_URL = process.env.ORIGAMI_BACKEND_URL ?? "";
 
 const DESKTOP_DIR = path.resolve(__dirname, "..", "..");
-const BACKEND_DIR = path.join(DESKTOP_DIR, "..", "backend");
 
 interface BackendInfo {
   baseUrl: string;
@@ -42,23 +42,22 @@ async function launchBackend(): Promise<BackendInfo> {
   }
 
   const authToken = crypto.randomBytes(32).toString("hex");
-  const env: NodeJS.ProcessEnv = {
+  const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ORIGAMI_PORT: "0",
     ORIGAMI_AUTH_TOKEN: authToken,
     ORIGAMI_ALLOWED_ORIGINS: rendererOrigin(),
   };
   if (app.isPackaged) {
-    env.ORIGAMI_DATA_DIR = path.join(app.getPath("userData"), "data");
+    baseEnv.ORIGAMI_DATA_DIR = path.join(app.getPath("userData"), "data");
   }
 
-  // Phase 2 swaps this for a bundled Python runtime in packaged builds;
-  // running from source uses uv exactly like the manual dev workflow.
+  const launch = resolveBackendLaunch(baseEnv);
   const handle = await startSidecar({
-    command: "uv",
-    args: ["run", "python", "main.py"],
-    cwd: BACKEND_DIR,
-    env,
+    command: launch.command,
+    args: launch.args,
+    cwd: launch.cwd,
+    env: launch.env,
     authToken,
   });
 
