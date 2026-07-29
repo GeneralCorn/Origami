@@ -151,6 +151,7 @@ async def chat(request: ChatRequest):
         logger.info("[LATENCY] === SSE stream complete: %.3fs total, %d thought blocks ===",
                     t_end - t_start, reasoning_counter)
         yield _sse({"type": "finish", "finishReason": "stop"})
+        yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         generate(),
@@ -158,5 +159,6 @@ async def chat(request: ChatRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "x-vercel-ai-ui-message-stream": "v1",
         },
     )

@@ -8,12 +8,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from config import NOTES_DIR
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-NOTES_DIR = _BACKEND_DIR / "notes"
-NOTES_DIR.mkdir(exist_ok=True)
 
 
 class CreateNoteRequest(BaseModel):

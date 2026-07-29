@@ -4,7 +4,6 @@ Vector search over contextualized chunks stored in ChromaDB.
 Embedding model is configured in services/embeddings.py (currently BAAI/bge-small-en-v1.5).
 """
 
-from ipaddress import collapse_addresses
 from typing import Any
 
 from services.chroma import get_collection

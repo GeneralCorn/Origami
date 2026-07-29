@@ -9,12 +9,10 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from config import CHATS_DIR
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-CHATS_DIR = _BACKEND_DIR / "chats"
-CHATS_DIR.mkdir(exist_ok=True)
 
 
 class MessagePart(BaseModel):

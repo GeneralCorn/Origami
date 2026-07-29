@@ -6,15 +6,11 @@ in ChromaDB — there is no separate registry file.
 
 import hashlib
 import json
-from pathlib import Path
 
 import chromadb
 
-from config import CHROMA_DIR, CHROMA_COLLECTION
+from config import CHROMA_DIR, CHROMA_COLLECTION, SAVED_TAGS_FILE
 from services.embeddings import get_embedding_function
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-_TAGS_FILE = _BACKEND_DIR / "saved_tags.json"
 
 _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 _ef = get_embedding_function()
@@ -54,10 +50,10 @@ def find_by_hash(content_hash: str) -> dict | None:
 
 def _load_saved_tags() -> list[str]:
     """Load user-saved tags from disk."""
-    if not _TAGS_FILE.exists():
+    if not SAVED_TAGS_FILE.exists():
         return []
     try:
-        return json.loads(_TAGS_FILE.read_text())
+        return json.loads(SAVED_TAGS_FILE.read_text())
     except Exception:
         return []
 
@@ -66,7 +62,7 @@ def save_tag(tag: str) -> None:
     """Persist a user-created tag so it appears in future uploads."""
     tags = set(_load_saved_tags())
     tags.add(tag)
-    _TAGS_FILE.write_text(json.dumps(sorted(tags)))
+    SAVED_TAGS_FILE.write_text(json.dumps(sorted(tags)))
 
 
 def list_all_tags() -> list[str]:
@@ -97,11 +93,9 @@ def set_tags(file_id: str, tags: list[str]) -> bool:
     results = col.get(where={"file_id": file_id}, include=["metadatas"])
     if not results["ids"]:
         return False
-    updated_metadatas = []
     for meta in results["metadatas"]:
         meta["tags"] = tags
-        updated_metadatas.append(meta)
-    col.update(ids=results["ids"], metadatas=updated_metadatas)
+    col.update(ids=results["ids"], metadatas=results["metadatas"])
     return True
 
 
