@@ -1,12 +1,19 @@
 import logging
+import os
 import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env.local before any other imports that read config
-_env_file = Path(__file__).resolve().parent / ".env.local"
-load_dotenv(_env_file)
+# Load .env.local before any other imports that read config. A packaged
+# build ships the backend inside a read-only signed bundle, so the user's
+# own file lives in the writable data dir and the one next to this module
+# is only the dev fallback. load_dotenv never overrides a variable that is
+# already set, so the launcher's environment still wins over both files.
+_BACKEND_DIR = Path(__file__).resolve().parent
+_DATA_DIR = Path(os.getenv("ORIGAMI_DATA_DIR", str(_BACKEND_DIR)))
+load_dotenv(_DATA_DIR / ".env.local")
+load_dotenv(_BACKEND_DIR / ".env.local")
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for ad-hoc builds only. Not what ships.
+
+  The hardened runtime validates that every library a process maps carries
+  the same Team ID as the process itself. An ad-hoc signature has no Team
+  ID at all, so under the hardened runtime an ad-hoc build cannot load its
+  own Electron Framework:
+
+    Library not loaded: @rpath/Electron Framework.framework/Electron Framework
+    Reason: ... mapping process and mapped file (non-platform) have
+    different Team IDs
+
+  disable-library-validation is the answer to that, and only to that. A
+  Developer ID build signs every nested binary with one real Team ID, so
+  the check passes on its own and the key is left out of the shipped
+  entitlements in entitlements.app.plist and entitlements.python.plist.
+
+  This file is applied to every binary in an ad-hoc build, so it is the
+  union of both shipped sets plus the one extra key.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

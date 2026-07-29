@@ -1,3 +1,8 @@
 node_modules/
 dist/
 out/
+
+# Built by scripts/bundle-python.mjs: the relocatable CPython, the backend
+# copy that ships beside it, and the cached upstream tarball.
+resources/
+.cache/
