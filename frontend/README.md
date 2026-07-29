@@ -1,36 +1,27 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Origami launch site
 
-## Getting Started
+The public site for Origami, exported statically and served from GitHub Pages at `/Origami`. It has two pages, a landing page and an FAQ, and it will never have a backend: no forms, no analytics, no accounts. That constraint is recorded in [`docs/ELECTRON_PORT_PLAN.md`](../docs/ELECTRON_PORT_PLAN.md) section 5.
 
-First, run the development server:
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The dev server serves the site under the `/Origami` base path, so open [http://localhost:3000/Origami](http://localhost:3000/Origami).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+bun run build
+```
 
-## Learn More
+`next build` writes the static export to `out/`. The `.github/workflows/deploy-pages.yml` workflow builds and deploys it on every push to `main` that touches `frontend/`.
 
-To learn more about Next.js, take a look at the following resources:
+## Constraints
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Static export only. No route handlers, no server actions, no rewrites.
+- Light mode only.
+- Motion respects `prefers-reduced-motion`.
+- Fonts are self-hosted at build time through `next/font`. No runtime requests to third parties.
