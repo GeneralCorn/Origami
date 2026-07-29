@@ -1,27 +1,39 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import { ThemeProvider } from "@/lib/theme";
+import { Fragment_Mono, Instrument_Sans, Newsreader } from "next/font/google";
+import { SiteHeader } from "@/components/site/site-header";
+import { SiteFooter } from "@/components/site/site-footer";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
+  display: "swap",
+});
+
+const instrumentSans = Instrument_Sans({
+  variable: "--font-instrument-sans",
   subsets: ["latin"],
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
+const fragmentMono = Fragment_Mono({
+  variable: "--font-fragment-mono",
   subsets: ["latin"],
+  weight: "400",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Origami",
-  description: "Local AI research assistant",
+  metadataBase: new URL("https://generalcorn.github.io"),
+  title: {
+    default: "Origami, a local-first AI knowledge base",
+    template: "%s · Origami",
+  },
+  description:
+    "Open source knowledge base that ingests PDFs, notes, and screenshots, indexes them on your machine, and answers hard questions with a research agent.",
 };
-
-// Inline script to apply saved theme before first paint (prevents flash)
-const themeScript = `(function(){try{var t=localStorage.getItem("origami-theme");if(t==="dark"||t==="palenight")document.documentElement.classList.add(t)}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -29,14 +41,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-      </head>
-      <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
-      >
-        <ThemeProvider>{children}</ThemeProvider>
+    <html
+      lang="en"
+      className={`${newsreader.variable} ${instrumentSans.variable} ${fragmentMono.variable}`}
+    >
+      <body className="grain">
+        <noscript>
+          <style>{`[style*="opacity:0"]{opacity:1 !important;transform:none !important}`}</style>
+        </noscript>
+        <SiteHeader />
+        {children}
+        <SiteFooter />
       </body>
     </html>
   );
