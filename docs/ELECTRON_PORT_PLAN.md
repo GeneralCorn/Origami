@@ -63,6 +63,8 @@ Keys required, matched to the connectors in the integrations matrix:
 
 Full Disk Access, which iMessage ingestion depends on, is path-based rather than gated by a usage description key. `[UNVERIFIED]` Whether it follows the same responsible-process attribution rule has not been confirmed and must be tested before the iMessage connector is scheduled.
 
+**Partly resolved in Phase 2, 2026-07-29.** `[VERIFIED]` A missing Full Disk Access grant fails loudly rather than silently: `stat()` on `chat.db` succeeds and `open()` returns `EPERM` on a file the caller owns at mode 644. So this permission is unlike the four above, and a connector can tell that it was denied. Whether a child of a granted app inherits the grant is still open, because answering it means granting Full Disk Access to a real bundle. The harness is committed as `--tcc-probe`; see `INTEGRATIONS_RESEARCH.md` §4 for the evidence and the one command that finishes it.
+
 ### 3.4 Sign with a real Developer ID from the first build
 
 `[VERIFIED]` TCC binds a permission grant to the code signature, bundle identifier, and on-disk path. `[SECONDARY]` Ad-hoc and unsigned builds regenerate their signature each time, so every rebuild presents as a new application and grants do not persist. OpenClaw's own macOS documentation reaches the same conclusion and requires real Apple certificates for all builds.
@@ -236,7 +238,7 @@ CodeMirror 6, markdown as source of truth, the interface redesign. After the run
 
 | # | Question | Blocks | Where |
 |---|---|---|---|
-| 1 | Does Full Disk Access follow responsible-process attribution for child processes? | iMessage connector | §3.3, resolve in Phase 2 |
+| 1 | Does Full Disk Access follow responsible-process attribution for child processes? | iMessage connector | §3.3. Half answered in Phase 2: the denial is loud, so it is detectable. Inheritance still needs a granted bundle, harness committed as `--tcc-probe` |
 | 2 | How far do quantized `fastembed` vectors diverge from the current ones? | Nothing, once `embedding_model` is recorded | `ARCHITECTURE_V2.md` §5, check in Phase 0 |
 | 3 | Does CodeMirror 6 handle inline mixed media acceptably? | Editor choice | §4, spike before Phase 6 |
 | 4 | Is the taint rule ergonomically tolerable? | Connector UX | `ARCHITECTURE_V2.md` §3 |

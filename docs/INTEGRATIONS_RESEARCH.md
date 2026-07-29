@@ -117,6 +117,32 @@ Remedy 1 is correct for Origami. Remedy 2 exists for launching untrusted third-p
 
 `[UNVERIFIED]` Whether Full Disk Access, which is path-based rather than mediated by an `NS*UsageDescription` key, behaves the same way for child processes as the API-gated permissions above. FDA is the mechanism iMessage ingestion depends on, so this needs its own test rather than an assumption. See §7.
 
+### What Phase 2 measured, 2026-07-29
+
+The question above is still open, but it is now half answered and the other half is one command away.
+
+`[VERIFIED]` **The denial is loud, not silent.** This is the important difference from the API-gated permissions in this section, and it inverts the risk. On macOS 26.4.1, with the file owned by the calling user at mode 644:
+
+```
+mode 0o644 owner uid 501 process uid 501
+errno 1 EPERM
+```
+
+`stat()` on `~/Library/Messages/chat.db` succeeds and returns the real size; `open()` fails. POSIX permissions cannot explain that, since the caller owns the file and the mode allows the read. The errno is `EPERM`, not the `EACCES` an ordinary permission failure produces, which is the documented TCC signature. So a missing Full Disk Access grant is detectable at the call site, and an iMessage connector can report it. A missing `NSCalendarsUsageDescription` cannot be detected at all, because it returns an empty result.
+
+**Not resolved: whether a child of an FDA-granted app inherits the grant.** Confirming that requires granting Full Disk Access to a real bundle, which is an admin-authenticated change to a system privacy setting, so it was not done here.
+
+The harness for it is committed. `Origami.app/Contents/MacOS/Origami --tcc-probe` opens `chat.db` from the main process and from a sidecar child and prints both results. It has to run from inside the bundle: launching the interpreter from a terminal makes the terminal the responsible process and measures nothing. Against a build with no grant, both sides are denied, which is the expected baseline:
+
+```
+TCC_PROBE chat.db parent=denied EPERM errno=-1
+TCC_PROBE chat.db child=denied errno=1
+```
+
+To finish it: grant Full Disk Access to the built `Origami.app` in System Settings, then run the same command. `parent=readable child=readable` means the child inherits and the sidecar can be the process that reads. `parent=readable child=denied` means FDA does not follow the responsible-process rule, and the read has to move into the Electron process with the sidecar receiving rows over IPC.
+
+One caveat that matters for interpreting a negative result: an ad-hoc build's identity changes on every rebuild, so a grant given to one build does not carry to the next. Run the probe against the exact bundle that was granted, without repackaging in between.
+
 ---
 
 ## 5. Discord: bot accounts only, which excludes the interesting data
