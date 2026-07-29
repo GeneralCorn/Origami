@@ -15,18 +15,56 @@ Run from the repo root:
     cd backend && uv run python ../scripts/migrate_schema_v2.py
 """
 
+import os
+import sqlite3
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from dotenv import load_dotenv
 
-from config import CHROMA_DIR
+_BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
+sys.path.insert(0, str(_BACKEND_DIR))
+
+# Mirrors backend/main.py, and has to. config.py resolves CHROMA_DIR,
+# CHROMA_COLLECTION and EMBEDDING_MODEL from the bare environment, so a
+# script that skipped this migrated whichever store the defaults pointed
+# at, created an empty `documents` collection beside the real one, and
+# still exited 0 reporting success.
+_DATA_DIR = Path(os.getenv("ORIGAMI_DATA_DIR", str(_BACKEND_DIR)))
+load_dotenv(_DATA_DIR / ".env.local")
+load_dotenv(_BACKEND_DIR / ".env.local")
+
+from config import CHROMA_DIR, CHROMA_COLLECTION
 from services.migrate import run_migrations
 from services.schema import SCHEMA_VERSION
 
 
+def collection_exists() -> bool:
+    """Whether the configured collection is actually in this store.
+
+    Read straight from sqlite rather than through a chromadb client:
+    get_or_create_collection would conjure an empty collection, and the
+    script would then report "0 records, 0 not at schema v2" and exit 0
+    over a store it never touched.
+    """
+    database = CHROMA_DIR / "chroma.sqlite3"
+    if not database.exists():
+        return False
+    connection = sqlite3.connect(database)
+    try:
+        names = [row[0] for row in connection.execute("SELECT name FROM collections")]
+    finally:
+        connection.close()
+    return CHROMA_COLLECTION in names
+
+
 def main() -> int:
-    print(f"store: {CHROMA_DIR}")
+    print(f"store:      {CHROMA_DIR.resolve()}")
+    print(f"collection: {CHROMA_COLLECTION}")
+
+    if not collection_exists():
+        print(f"no collection named {CHROMA_COLLECTION!r} in this store; nothing was migrated")
+        return 1
 
     # run_migrations before importing services.chroma: importing that module
     # creates the client, and chromadb caches the collection configuration

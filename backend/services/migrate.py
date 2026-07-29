@@ -55,17 +55,43 @@ def _legacyise(node) -> list[dict]:
 
 
 def _backup_once() -> Path | None:
-    """Copy the whole store aside, at most once per process.
+    """Copy the whole store aside before anything mutates it.
 
     copytree rather than a sqlite copy: the vectors live in the HNSW
     segment directory, not in chroma.sqlite3.
+
+    One backup per schema version rather than one per process. The copy
+    worth keeping is the first, taken before any record was rewritten; a
+    later one captures a half-migrated store. Timestamped names meant a
+    crash-restart loop wrote a fresh full-size copy on every launch, so a
+    2 GB store filled the disk over a handful of failed starts.
+
+    The copy lands on a `.partial` path and is renamed into place only
+    once copytree returns. An interrupted copy is therefore never
+    mistaken for a usable backup, and never accumulates: the next attempt
+    discards it rather than adding to it.
     """
     global _backed_up
     if _backed_up or not CHROMA_DIR.exists():
         return None
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    destination = CHROMA_DIR.parent / f"{CHROMA_DIR.name}.bak-{stamp}"
-    shutil.copytree(CHROMA_DIR, destination)
+
+    destination = CHROMA_DIR.parent / f"{CHROMA_DIR.name}.bak-v{SCHEMA_VERSION}"
+    if destination.exists():
+        _backed_up = True
+        logger.info(f"Reusing the pre-v{SCHEMA_VERSION} backup at {destination}")
+        return destination
+
+    staging = destination.with_name(f"{destination.name}.partial")
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        shutil.copytree(CHROMA_DIR, staging)
+    except BaseException:
+        # BaseException on purpose: a KeyboardInterrupt part-way through
+        # must not leave a full-size partial copy behind either.
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    staging.replace(destination)
+
     _backed_up = True
     logger.info(f"Backed up Chroma store to {destination}")
     return destination
@@ -140,11 +166,17 @@ def repair_embedding_function() -> str | None:
 
 
 def _backfill_record(meta: dict, model_id: str) -> dict:
-    """The v2 fields for one v1 record.
+    """The v2 fields for one record that is behind the current version.
 
     Built from read_schema_fields so the migration writes exactly what the
     legacy read path would otherwise infer, and the two can never disagree.
-    Only the fields derivable from the record itself are overridden.
+
+    A derived value only fills a field that is absent or empty. A v1 record
+    carries none of them, so the v1->v2 hop is unchanged. The guard matters
+    at the next SCHEMA_VERSION bump, which re-selects records that already
+    hold correct values: overwriting those would stamp the legacy model id
+    onto a segment embedded by the current one, hiding it from the
+    incremental re-embed job that embedding_model exists to drive.
 
     ingested_at is deliberately left empty. copy2 preserves the *source*
     mtime, so a PDF's mtime is the author's timestamp rather than the time
@@ -152,11 +184,16 @@ def _backfill_record(meta: dict, model_id: str) -> dict:
     """
     record = read_schema_fields(meta)
     filename = meta.get("filename", "")
+    derived = {
+        "source_id": meta.get("content_hash", ""),
+        "created_at": meta.get("publish_date", ""),
+        "raw_ref": f"pdfs/{filename}" if filename else "",
+        "embedding_model": model_id,
+    }
+    for key, value in derived.items():
+        if not record[key]:
+            record[key] = value
     record["schema_version"] = SCHEMA_VERSION
-    record["source_id"] = meta.get("content_hash", "")
-    record["created_at"] = meta.get("publish_date", "")
-    record["raw_ref"] = f"pdfs/{filename}" if filename else ""
-    record["embedding_model"] = model_id
     return record
 
 
@@ -165,6 +202,12 @@ def backfill_schema_v2() -> int:
 
     Metadata-only updates merge and touch no vector, so this recomputes no
     embeddings. Returns the number of records updated.
+
+    Read and write are both paged. Fetching every stale record's metadata
+    in one call binds a SQL variable per matched row and raises "too many
+    SQL variables" above 32,766 of them, which silently aborted the entire
+    migration on any library past roughly 650 PDFs. It also held every
+    matched original_chunk resident at once: 30k records cost 647 MB.
     """
     from services.chroma import get_collection, max_batch_size
 
@@ -172,8 +215,9 @@ def backfill_schema_v2() -> int:
     if collection.count() == 0:
         return 0
 
-    stale = collection.get(where={"schema_version": {"$ne": SCHEMA_VERSION}}, include=["metadatas"])
-    ids = stale["ids"]
+    # include=[] binds no per-row variable, so the id list is safe to take
+    # in one call at any corpus size. Only the metadata fetch needs paging.
+    ids = collection.get(where={"schema_version": {"$ne": SCHEMA_VERSION}}, include=[])["ids"]
     if not ids:
         return 0
 
@@ -186,13 +230,18 @@ def backfill_schema_v2() -> int:
 
     _backup_once()
 
-    updates = [_backfill_record(meta, model_id) for meta in stale["metadatas"]]
     batch = max_batch_size()
+    done = 0
     for start in range(0, len(ids), batch):
-        collection.update(ids=ids[start:start + batch], metadatas=updates[start:start + batch])
+        # get(ids=...) makes no promise about ordering, so the update is
+        # keyed on the ids the page actually came back with.
+        page = collection.get(ids=ids[start:start + batch], include=["metadatas"])
+        updates = [_backfill_record(meta, model_id) for meta in page["metadatas"]]
+        collection.update(ids=page["ids"], metadatas=updates)
+        done += len(page["ids"])
 
-    logger.info(f"Backfilled schema v{SCHEMA_VERSION} onto {len(ids)} records (embedding_model={model_id})")
-    return len(ids)
+    logger.info(f"Backfilled schema v{SCHEMA_VERSION} onto {done} records (embedding_model={model_id})")
+    return done
 
 
 def run_migrations() -> dict:

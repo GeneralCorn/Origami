@@ -51,6 +51,10 @@ class ResearchState(TypedDict):
     current_query: str
     research_notes: list[str]
     retrieved_chunks: list[str]
+    # True once any retrieved segment is untrusted. ARCHITECTURE_V2 section 3
+    # scopes trust to the bytes, so this is set by the ingest-time provenance
+    # rather than by anything the model decides.
+    tainted: bool
     loop_count: int
     is_complete: bool
     final_answer: str
@@ -103,9 +107,15 @@ async def retrieve_node(state: ResearchState) -> ResearchState:
 
     chunks = await vector_search(query, n_results=5, file_ids=state.get("scope"))
     state["retrieved_chunks"] = [c["text"] for c in chunks]
+    # Taint accumulates across loops: a later clean retrieval does not
+    # untaint a turn that has already read untrusted bytes.
+    state["tainted"] = state.get("tainted", False) or any(
+        c["prov_trust"] == "untrusted" for c in chunks
+    )
 
     elapsed = time.perf_counter() - t0
-    meta = {"latency_s": round(elapsed, 2), "input_tokens": 0, "output_tokens": 0}
+    meta = {"latency_s": round(elapsed, 2), "input_tokens": 0, "output_tokens": 0,
+            "tainted": state["tainted"]}
     if chunks:
         # Show which sources were found
         sources = list(dict.fromkeys(c["source"] for c in chunks))  # unique, ordered
@@ -672,6 +682,7 @@ async def run_research_agent(
         "current_query": user_query,
         "research_notes": [],
         "retrieved_chunks": [],
+        "tainted": False,
         "loop_count": 0,
         "is_complete": False,
         "final_answer": "",
@@ -729,6 +740,7 @@ async def stream_research_agent(
         "current_query": user_query,
         "research_notes": [],
         "retrieved_chunks": [],
+        "tainted": False,
         "loop_count": 0,
         "is_complete": False,
         "final_answer": "",

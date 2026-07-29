@@ -1,6 +1,8 @@
 import logging
 import os
 import secrets
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,7 +25,8 @@ from fastapi.responses import JSONResponse
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 from config import FRONTEND_URL, EXTRA_ALLOWED_ORIGINS, AUTH_TOKEN
-from services.migrate import backfill_schema_v2
+from services.migrate import run_migrations
+from services.schema import SCHEMA_VERSION
 from routes.chat import router as chat_router
 from routes.chats import router as chats_router
 from routes.documents import router as documents_router
@@ -31,16 +34,39 @@ from routes.notes import router as notes_router
 from routes.upload import router as upload_router
 from routes.screenshots import router as screenshots_router
 
-app = FastAPI(title="Origami API", version="0.1.0")
+logger = logging.getLogger(__name__)
 
-# Records that predate the Item/Segment schema get their v2 metadata here.
-# A failure must not stop the port binding: every reader resolves missing
-# schema fields through services.schema.read_schema_fields, so an
-# unmigrated store still serves, it just looks stale to the re-embed job.
-try:
-    backfill_schema_v2()
-except Exception as exc:
-    logging.getLogger(__name__).error(f"Schema v2 backfill failed: {exc}", exc_info=True)
+
+def _migrate() -> None:
+    """Bring a store that predates the Item/Segment schema onto v2.
+
+    Runs on a worker thread, off the startup path. The whole migration is
+    a full-store copy plus a corpus-wide metadata rewrite, and at import
+    time all of it landed between process start and the ORIGAMI_PORT= line
+    that desktop/main/sidecar.ts allows 30s for. Measured at 6.9s on 30k
+    records, so it crosses that deadline somewhere past 100k chunks, and
+    sooner on a volume that cannot clone blocks. The app then fails to
+    launch with no sign that a migration was the reason.
+
+    Serving before it finishes is safe because services.rag resolves every
+    schema field through services.schema.read_schema_fields, whose legacy
+    defaults are facts about the pre-Phase-3 pipeline rather than guesses.
+    An unmigrated record therefore reads as untrusted rather than as
+    missing; it only looks stale to the re-embed job.
+    """
+    try:
+        logger.info(f"Schema v{SCHEMA_VERSION} migration: {run_migrations()}")
+    except Exception as exc:
+        logger.error(f"Schema v{SCHEMA_VERSION} migration failed: {exc}", exc_info=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    threading.Thread(target=_migrate, name="origami-migrate", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Origami API", version="0.1.0", lifespan=lifespan)
 
 
 if AUTH_TOKEN:

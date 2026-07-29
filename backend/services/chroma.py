@@ -6,6 +6,8 @@ in ChromaDB — there is no separate registry file.
 
 import hashlib
 import json
+import logging
+import threading
 
 import chromadb
 
@@ -13,18 +15,43 @@ from config import CHROMA_DIR, CHROMA_COLLECTION, SAVED_TAGS_FILE
 from services.embeddings import get_embedding_function
 from services.migrate import repair_embedding_function
 
-# Runs before the client exists: chromadb reads the collection's persisted
-# embedding-function config once and caches it on the handle, so a store
-# written before the fastembed swap has to be repaired first or it cannot
-# be opened at all.
-repair_embedding_function()
+logger = logging.getLogger(__name__)
 
 _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 _ef = get_embedding_function()
 
+_repair_lock = threading.Lock()
+_repaired = False
+
+
+def _repair_once() -> None:
+    """Run the embedding-function repair before the first collection handle.
+
+    Deliberately here rather than at module import. chromadb reads the
+    collection's persisted embedding-function config once and caches it on
+    the handle, so a store written before the fastembed swap has to be
+    repaired before any handle exists. But the repair copies the whole
+    store aside and rewrites sqlite, and at import time an OSError from
+    that copy (a read-only volume, a full disk, a packaged read-only
+    Resources dir) propagated out of `import services.chroma` and aborted
+    `import main`, so the app never launched at all. Swallowing it here
+    leaves a backend that binds its port and serves; only the
+    pre-fastembed store stays unreadable, which it already was.
+    """
+    global _repaired
+    with _repair_lock:
+        if _repaired:
+            return
+        _repaired = True
+        try:
+            repair_embedding_function()
+        except Exception as exc:
+            logger.error(f"Embedding-function repair failed: {exc}", exc_info=True)
+
 
 def get_collection() -> chromadb.Collection:
     """Get or create the ChromaDB collection with cosine similarity."""
+    _repair_once()
     return _client.get_or_create_collection(
         name=CHROMA_COLLECTION,
         metadata={"hnsw:space": "cosine"},
