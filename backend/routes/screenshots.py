@@ -24,8 +24,6 @@ from services.digest import (
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-SCREENSHOTS_DIR.mkdir(exist_ok=True)
-
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 

@@ -1,15 +1,12 @@
 """API routes for managing documents in ChromaDB."""
 
 import logging
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from config import PDFS_DIR
 from services.chroma import get_collection, get_document_meta, set_tags, set_title, delete_chunks
-
-_BACKEND_DIR = Path(__file__).resolve().parent.parent
-PDFS_DIR = _BACKEND_DIR / "pdfs"
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
