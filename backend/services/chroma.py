@@ -88,26 +88,27 @@ def get_document_meta(file_id: str) -> dict | None:
 
 
 def set_tags(file_id: str, tags: list[str]) -> bool:
-    """Update tags on all chunks belonging to a document."""
+    """Update tags on all chunks belonging to a document.
+
+    Chroma rejects an empty list, so clearing the last tag writes None,
+    which removes the key. That is the same on-disk shape an untagged
+    upload produces, and every reader already defaults it to [].
+    """
     col = get_collection()
-    results = col.get(where={"file_id": file_id}, include=["metadatas"])
-    if not results["ids"]:
+    chunk_ids = col.get(where={"file_id": file_id}, include=[])["ids"]
+    if not chunk_ids:
         return False
-    for meta in results["metadatas"]:
-        meta["tags"] = tags
-    col.update(ids=results["ids"], metadatas=results["metadatas"])
+    col.update(ids=chunk_ids, metadatas=[{"tags": tags or None} for _ in chunk_ids])
     return True
 
 
 def set_title(file_id: str, title: str) -> bool:
     """Update title on all chunks belonging to a document."""
     col = get_collection()
-    results = col.get(where={"file_id": file_id}, include=["metadatas"])
-    if not results["ids"]:
+    chunk_ids = col.get(where={"file_id": file_id}, include=[])["ids"]
+    if not chunk_ids:
         return False
-    for meta in results["metadatas"]:
-        meta["title"] = title
-    col.update(ids=results["ids"], metadatas=results["metadatas"])
+    col.update(ids=chunk_ids, metadatas=[{"title": title} for _ in chunk_ids])
     return True
 
 
