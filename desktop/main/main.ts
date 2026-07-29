@@ -1,11 +1,18 @@
 import crypto from "node:crypto";
 import path from "node:path";
 
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 
 import { startSidecar, type Sidecar } from "./sidecar";
 
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
+const IS_MAC = process.platform === "darwin";
+
+// Height of the app's own header strip. The Windows overlay must match it
+// or the OS-drawn buttons will not line up with the header.
+const TITLE_BAR_HEIGHT = 48;
+const DEFAULT_TITLE_BAR_COLOR = "#ffffff";
+const DEFAULT_TITLE_BAR_SYMBOL_COLOR = "#1a1a1a";
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL ?? "";
 const EXTERNAL_BACKEND_URL = process.env.ORIGAMI_BACKEND_URL ?? "";
 
@@ -76,10 +83,29 @@ async function launchBackend(): Promise<BackendInfo> {
 }
 
 function createWindow(info: BackendInfo): void {
+  // The two title bar styles are mutually exclusive: macOS floats the
+  // traffic lights over the content, Windows draws its own controls in an
+  // overlay. Neither accepts the other's options.
+  const titleBarOptions = IS_MAC
+    ? {
+        titleBarStyle: "hiddenInset" as const,
+        trafficLightPosition: { x: 19, y: (TITLE_BAR_HEIGHT - 16) / 2 },
+      }
+    : {
+        titleBarStyle: "hidden" as const,
+        titleBarOverlay: {
+          color: DEFAULT_TITLE_BAR_COLOR,
+          symbolColor: DEFAULT_TITLE_BAR_SYMBOL_COLOR,
+          height: TITLE_BAR_HEIGHT,
+        },
+      };
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     show: false,
+    backgroundColor: DEFAULT_TITLE_BAR_COLOR,
+    ...titleBarOptions,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "preload.js"),
       contextIsolation: true,
@@ -103,6 +129,27 @@ function createWindow(info: BackendInfo): void {
   } else {
     void mainWindow.loadFile(path.join(DESKTOP_DIR, "dist", "renderer", "index.html"));
   }
+}
+
+const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+// The overlay colors are fixed at window creation, so they go stale when
+// the user switches theme. Windows only: on macOS the traffic lights are
+// drawn by the system and setTitleBarOverlay is not implemented.
+function registerTitleBarThemeSync(): void {
+  if (IS_MAC) {
+    return;
+  }
+  ipcMain.on("titlebar:set-theme", (event, color: unknown, symbolColor: unknown) => {
+    if (typeof color !== "string" || typeof symbolColor !== "string") {
+      return;
+    }
+    if (!HEX_COLOR_PATTERN.test(color) || !HEX_COLOR_PATTERN.test(symbolColor)) {
+      return;
+    }
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.setTitleBarOverlay({ color, symbolColor, height: TITLE_BAR_HEIGHT });
+  });
 }
 
 async function stopSidecar(): Promise<void> {
@@ -139,6 +186,7 @@ app.whenReady().then(async () => {
     return;
   }
 
+  registerTitleBarThemeSync();
   createWindow(backendInfo);
 
   app.on("activate", () => {

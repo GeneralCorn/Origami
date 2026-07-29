@@ -36,6 +36,22 @@ On quit the main process sends `SIGTERM` to the backend and escalates to `SIGKIL
 
 In packaged builds `ORIGAMI_DATA_DIR` is set to `userData/data`. In development it is left unset, so dev data stays in `backend/` exactly where it was.
 
+## The title bar
+
+There is no OS title bar. The app's own header strip runs to the top of the window and the system draws its window controls over it.
+
+- **macOS** uses `titleBarStyle: "hiddenInset"`, so the traffic lights float over the header. `trafficLightPosition` centers them against the 48px header.
+- **Windows and Linux** use `titleBarStyle: "hidden"` with `titleBarOverlay`, which keeps the real minimize, maximize, and close buttons and draws them over the header. Bare `frame: false` is deliberately not used, because it would mean hand-drawing and hand-wiring those three buttons.
+
+Two constraints follow from this, and both are easy to break:
+
+1. The header carries `-webkit-app-region: drag` so the window still moves. **Every interactive element inside it needs the `titlebar-interactive` class**, which sets `no-drag`. Without it the control silently stops receiving clicks.
+2. The header reserves space for the controls through `--titlebar-inset-left` and `--titlebar-inset-right` in `globals.css`, keyed off a `data-platform` attribute that comes from the preload bridge rather than user-agent sniffing. Windows reads the real button width from the `titlebar-area-*` environment variables, with a static fallback.
+
+`titleBarOverlay` colors are baked in at window creation, so they go stale when the theme changes. The renderer resolves the active palette to hex and pushes it to the main process over IPC on every theme switch. That call is Windows-only; on macOS the system draws the traffic lights and it is skipped. The palette is authored in oklch, which the overlay cannot parse, so the conversion rasterizes the color to a single canvas pixel and reads the bytes back. Reading `fillStyle` directly does not work: Chromium echoes oklch unchanged rather than normalizing to hex.
+
+If the header height changes, update `TITLE_BAR_HEIGHT` in `main/main.ts` to match, or the Windows buttons will not line up.
+
 ## Notes on the port from Next.js
 
 The renderer is the `frontend/` application with the Next.js shell removed. What changed:
@@ -69,4 +85,6 @@ Full Disk Access, which iMessage ingestion needs, is path-based rather than key-
 - **The backend is not bundled.** The sidecar runs `uv run python main.py`, so `uv` and a synced backend environment must exist on the machine. Bundling the Python runtime is Phase 2.
 - **A full chat round trip is unverified.** The transport, the auth gate, and the SSE framing are confirmed working: an unauthenticated request gets 401, an authenticated one opens a stream and emits the first `start` event. The assistant response itself was never exercised, because no `ANTHROPIC_API_KEY` is configured in this checkout. Set one in `backend/.env.local` to confirm.
 - **The renderer bundle is a single 2 MB chunk.** Fine for a local application with no network fetch, worth splitting only if startup time becomes a complaint.
+- **The Windows title bar path is unverified.** It was written against the `titleBarOverlay` API and reviewed by inspection, but there is no Windows machine here to run it on. The macOS path is verified against a running window.
 - **Windows and Linux are not supported** and are out of scope per the port plan.
+- **Native vibrancy and Mica are not enabled.** Both need the CSS behind them to be transparent, which the current opaque palette is not, so turning them on would show no change without a palette pass first.

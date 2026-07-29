@@ -3,6 +3,8 @@ declare global {
     origami?: {
       backendUrl: string;
       authToken: string;
+      platform: string;
+      setTitleBarTheme: (color: string, symbolColor: string) => void;
     };
   }
 }

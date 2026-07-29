@@ -311,12 +311,12 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
 
   return (
     <div className="h-screen w-screen overflow-hidden relative">
-      {/* Header */}
-      <div className="flex items-center h-12 px-3 border-b border-thin border-border bg-background/80 backdrop-blur-md z-50 relative">
+      {/* Header — also the window drag handle */}
+      <div className="titlebar flex items-center h-12 border-b border-thin border-border bg-background/80 backdrop-blur-md z-50 relative">
         <motion.button
           whileTap={{ scale: 0.98 }}
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent transition-colors duration-150"
+          className="titlebar-interactive flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent transition-colors duration-150"
         >
           <PanelLeft className="h-5 w-5 text-muted-foreground" />
         </motion.button>
@@ -327,7 +327,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() => navigate("/digest")}
-            className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+            className="titlebar-interactive flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
             title="Weekly Digest"
           >
             <Calendar className="h-5 w-5" />
@@ -335,7 +335,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() => navigate("/database")}
-            className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+            className="titlebar-interactive flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
             title="Knowledge Base"
           >
             <Database className="h-5 w-5" />
@@ -346,7 +346,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
             <motion.button
               whileTap={{ scale: 0.98 }}
               onClick={() => setThemeOpen(!themeOpen)}
-              className="flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+              className="titlebar-interactive flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
             >
               {theme === "light" ? (
                 <Sun className="h-5 w-5" />
@@ -363,7 +363,7 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
                   className="fixed inset-0 z-40"
                   onClick={() => setThemeOpen(false)}
                 />
-                <div className="absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-border bg-popover shadow-lg py-1">
+                <div className="titlebar-interactive absolute right-0 top-full mt-1 z-50 w-40 rounded-md border border-border bg-popover shadow-lg py-1">
                   {THEME_OPTIONS.map((opt) => {
                     const Icon = opt.icon;
                     const active = theme === opt.value;

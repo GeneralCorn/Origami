@@ -180,6 +180,41 @@ html.palenight {
   border-width: 0.5px;
 }
 
+/* ── Custom title bar ──
+   The OS draws its window controls over the app's header strip, so the
+   header reserves space for them and doubles as the window drag handle. */
+
+:root {
+  --titlebar-inset-left: 0px;
+  --titlebar-inset-right: 0px;
+}
+
+/* macOS traffic lights sit at the left. Electron does not publish the
+   titlebar-area-* environment variables for hiddenInset, so this is static. */
+:root[data-platform="darwin"] {
+  --titlebar-inset-left: 78px;
+}
+
+/* The Windows overlay does publish them, so the reserved width follows the
+   OS if it ever changes its button sizing. */
+:root[data-platform="win32"] {
+  --titlebar-inset-right: calc(
+    100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 138px))
+  );
+}
+
+@utility titlebar {
+  -webkit-app-region: drag;
+  padding-left: max(1rem, var(--titlebar-inset-left));
+  padding-right: max(1rem, var(--titlebar-inset-right));
+}
+
+/* Every interactive element inside a drag region needs this, or it stops
+   receiving clicks. */
+@utility titlebar-interactive {
+  -webkit-app-region: no-drag;
+}
+
 /* Strip MDEditor built-in rounding/border so it sits flush in the panel */
 .w-md-editor {
   border-radius: 0 !important;
