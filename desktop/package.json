@@ -1,5 +1,6 @@
 {
   "name": "origami-desktop",
+  "productName": "Origami",
   "version": "0.1.0",
   "private": true,
   "description": "Origami desktop shell: Electron around the Vite renderer with the Python backend as a sidecar",

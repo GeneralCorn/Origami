@@ -5,8 +5,10 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 
 import { resolveBackendLaunch } from "./backend-launch";
 import { startSidecar, type Sidecar } from "./sidecar";
+import { runTccProbe } from "./tcc-probe";
 
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
+const IS_TCC_PROBE = process.argv.includes("--tcc-probe");
 const IS_MAC = process.platform === "darwin";
 
 // Height of the app's own header strip. The Windows overlay must match it
@@ -160,9 +162,16 @@ async function stopSidecar(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
-  if (IS_SMOKE_TEST) {
+  if (IS_SMOKE_TEST || IS_TCC_PROBE) {
     app.dock?.hide();
   }
+
+  if (IS_TCC_PROBE) {
+    await runTccProbe();
+    app.exit(0);
+    return;
+  }
+
   try {
     backendInfo = await launchBackend();
   } catch (error) {

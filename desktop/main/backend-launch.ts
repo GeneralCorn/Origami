@@ -9,6 +9,14 @@ export interface BackendLaunch {
   env: NodeJS.ProcessEnv;
 }
 
+interface Interpreter {
+  command: string;
+  prefixArgs: string[];
+  mainScript: string;
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}
+
 const DESKTOP_DIR = path.resolve(__dirname, "..", "..");
 const DEV_BACKEND_DIR = path.join(DESKTOP_DIR, "..", "backend");
 
@@ -19,11 +27,12 @@ const DEV_BACKEND_DIR = path.join(DESKTOP_DIR, "..", "backend");
  * workflow. A packaged app has neither uv nor a checkout, so it runs the
  * relocatable CPython that scripts/bundle-python.mjs put under Resources.
  */
-export function resolveBackendLaunch(baseEnv: NodeJS.ProcessEnv): BackendLaunch {
+function resolveInterpreter(baseEnv: NodeJS.ProcessEnv): Interpreter {
   if (!app.isPackaged) {
     return {
       command: "uv",
-      args: ["run", "python", "main.py"],
+      prefixArgs: ["run", "python"],
+      mainScript: "main.py",
       cwd: DEV_BACKEND_DIR,
       env: baseEnv,
     };
@@ -47,8 +56,30 @@ export function resolveBackendLaunch(baseEnv: NodeJS.ProcessEnv): BackendLaunch 
 
   return {
     command: path.join(process.resourcesPath, "python", "bin", "python3"),
-    args: [path.join(backendDir, "main.py")],
+    prefixArgs: [],
+    mainScript: path.join(backendDir, "main.py"),
     cwd: backendDir,
     env,
+  };
+}
+
+export function resolveBackendLaunch(baseEnv: NodeJS.ProcessEnv): BackendLaunch {
+  const interpreter = resolveInterpreter(baseEnv);
+  return {
+    command: interpreter.command,
+    args: [...interpreter.prefixArgs, interpreter.mainScript],
+    cwd: interpreter.cwd,
+    env: interpreter.env,
+  };
+}
+
+/** The same interpreter, running a snippet instead of the server. */
+export function resolvePythonEval(baseEnv: NodeJS.ProcessEnv, code: string): BackendLaunch {
+  const interpreter = resolveInterpreter(baseEnv);
+  return {
+    command: interpreter.command,
+    args: [...interpreter.prefixArgs, "-c", code],
+    cwd: interpreter.cwd,
+    env: interpreter.env,
   };
 }
