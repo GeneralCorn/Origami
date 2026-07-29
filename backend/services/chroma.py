@@ -11,6 +11,13 @@ import chromadb
 
 from config import CHROMA_DIR, CHROMA_COLLECTION, SAVED_TAGS_FILE
 from services.embeddings import get_embedding_function
+from services.migrate import repair_embedding_function
+
+# Runs before the client exists: chromadb reads the collection's persisted
+# embedding-function config once and caches it on the handle, so a store
+# written before the fastembed swap has to be repaired first or it cannot
+# be opened at all.
+repair_embedding_function()
 
 _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
 _ef = get_embedding_function()
@@ -23,6 +30,11 @@ def get_collection() -> chromadb.Collection:
         metadata={"hnsw:space": "cosine"},
         embedding_function=_ef,
     )
+
+
+def max_batch_size() -> int:
+    """Largest number of records Chroma accepts in one add or update call."""
+    return _client.get_max_batch_size()
 
 
 # -- Document-level helpers (query across chunks) --------------------------

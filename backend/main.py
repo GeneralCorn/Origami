@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 from config import FRONTEND_URL, EXTRA_ALLOWED_ORIGINS, AUTH_TOKEN
+from services.migrate import backfill_schema_v2
 from routes.chat import router as chat_router
 from routes.chats import router as chats_router
 from routes.documents import router as documents_router
@@ -31,6 +32,15 @@ from routes.upload import router as upload_router
 from routes.screenshots import router as screenshots_router
 
 app = FastAPI(title="Origami API", version="0.1.0")
+
+# Records that predate the Item/Segment schema get their v2 metadata here.
+# A failure must not stop the port binding: every reader resolves missing
+# schema fields through services.schema.read_schema_fields, so an
+# unmigrated store still serves, it just looks stale to the re-embed job.
+try:
+    backfill_schema_v2()
+except Exception as exc:
+    logging.getLogger(__name__).error(f"Schema v2 backfill failed: {exc}", exc_info=True)
 
 
 if AUTH_TOKEN:

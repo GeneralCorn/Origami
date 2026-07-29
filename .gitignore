@@ -27,6 +27,7 @@ dist/
 
 # vector stores
 chroma_data/
+chroma_data.bak-*/
 uploads/
 chats/
 
