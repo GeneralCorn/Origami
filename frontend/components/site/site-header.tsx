@@ -19,6 +19,12 @@ export function SiteHeader() {
             Capabilities
           </Link>
           <Link
+            href="/#roadmap"
+            className="hidden text-sm text-muted transition-colors hover:text-ink md:block"
+          >
+            Roadmap
+          </Link>
+          <Link
             href="/#install"
             className="hidden text-sm text-muted transition-colors hover:text-ink md:block"
           >
