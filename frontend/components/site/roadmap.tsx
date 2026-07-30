@@ -117,12 +117,19 @@ export function Roadmap() {
                 And where the line stops
               </h3>
               <p className="mt-3 max-w-[38rem] leading-relaxed text-muted">
-                Google Photos cannot be read through its API any more, because the library scopes
-                were removed, so the only honest route is importing a Takeout archive you asked for.
-                Automating a personal Discord account is a bannable offence, and WhatsApp has no
-                sanctioned path to personal messages at all. Those three are not waiting on a
-                roadmap, they are ruled out, and a tool that claims otherwise is either wrong or
-                about to get your account closed.
+                WhatsApp has no sanctioned path to personal messages, and neither does WeChat, whose
+                only message API serves business accounts reading their own support threads. Every
+                tool that claims otherwise is reading a local database it was never given
+                permission to read.
+              </p>
+              <p className="mt-4 max-w-[38rem] leading-relaxed text-muted">
+                Two others are narrower than they sound rather than forbidden. Google Photos lost
+                its library-read scopes, so the remaining routes are a per-session picker, which
+                cannot search anything you did not hand it, or a Takeout archive, which Google can
+                deliver to your Drive on a schedule. Discord permits a bot you invite to a server
+                you run, and it can read that server properly, but it will never see your direct
+                messages. Both are on the list because of what they can reach, not because reaching
+                for them would be wrong.
               </p>
             </div>
           </Reveal>

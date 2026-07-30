@@ -52,8 +52,9 @@ export function Privacy() {
         <Reveal delay={0.1} className="mt-16">
           <p className="max-w-[44rem] border-l-2 border-accent pl-5 text-[0.95rem] leading-relaxed text-panel-muted">
             What actually goes out, stated plainly: two jobs call the Anthropic API with a key you
-            provide. The agent answering a question, which sends it the passages it retrieved, and
-            the one-line notes written during ingestion. Vision, embeddings, search, and storage
+            provide. The agent answering a question, which sends the passages it retrieved and the
+            note you have open at the time, and the one-line blurbs written during ingestion, which
+            send the document being ingested once per chunk. Vision, embeddings, search, and storage
             all run locally. Origami is in active development, so read the code before trusting any
             of this with something sensitive.
           </p>
