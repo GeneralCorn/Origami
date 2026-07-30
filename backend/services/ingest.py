@@ -298,8 +298,14 @@ async def ingest_pdf(
                 span={"page_start": p_start, "page_end": p_end},
             )
 
-            # Insert immediately so frontend progress bar updates in real time
-            collection.add(
+            # Insert immediately so frontend progress bar updates in real time.
+            # upsert rather than add: add is a silent no-op on an existing id,
+            # so a re-ingest after an interrupted run could never repair the
+            # partial Item. segment_total lets item_completion() tell a
+            # truncated Item from a complete one. Embedding is CPU-bound and
+            # runs inside the call, so it goes off the event loop.
+            await asyncio.to_thread(
+                collection.upsert,
                 ids=[segment_id(item.id, i)],
                 documents=[segment.content],
                 metadatas=[segment_metadata(item, segment, extra={
@@ -308,6 +314,7 @@ async def ingest_pdf(
                     "tags": chunk_tags,
                     "content_hash": item.source_id,
                     "publish_date": item.created_at,
+                    "segment_total": len(chunks),
                 })],
             )
             ingested += 1
