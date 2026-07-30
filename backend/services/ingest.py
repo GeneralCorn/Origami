@@ -139,10 +139,20 @@ async def contextualize_chunk(
     a short blurb situating the chunk. This is prepended to the chunk
     before embedding.
     """
-    prompt = Prompt.render(CONTEXTUALIZER_PROMPT, {
-        "whole_document": document_prefix(whole_document),
-        "chunk_content": chunk_content,
-    })
+    # The document prefix is byte-identical across every chunk of this
+    # document and is roughly 88% of each request, so it is sent as a
+    # cacheable block. The prompt text itself is unchanged, only the message
+    # structure, so the bytes the model sees are the same and there is no
+    # quality risk. CONTEXTUALIZER_PROMPT is already document-first, which
+    # is what makes the prefix reusable.
+    prompt = Prompt.render(
+        CONTEXTUALIZER_PROMPT,
+        {
+            "whole_document": document_prefix(whole_document),
+            "chunk_content": chunk_content,
+        },
+        cache_after="whole_document",
+    )
     return await complete(Purpose.CONTEXTUALIZE, prompt, budget)
 
 
