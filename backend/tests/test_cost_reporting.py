@@ -244,3 +244,21 @@ def test_the_usage_dir_is_not_committable():
             cwd=_REPO, capture_output=True,
         )
         assert proc.returncode == 0, f"{candidate} is not gitignored"
+
+
+def test_captured_content_dirs_are_not_committable():
+    """Same hazard as the usage dir, for every directory that holds captured text.
+
+    notes/ and pdfs/ are deliberately tracked and so are excluded here; these
+    three carry content the user never chose to put in a repository.
+    """
+    for candidate in (
+        "backend/screenshots/shot.png",
+        "backend/digests/2026-07-30.md",
+        "backend/snippets/snippet.md",
+    ):
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", candidate],
+            cwd=_REPO, capture_output=True,
+        )
+        assert proc.returncode == 0, f"{candidate} is not gitignored"
