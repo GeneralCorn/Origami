@@ -46,9 +46,6 @@ export default function RootLayout({
       className={`${newsreader.variable} ${instrumentSans.variable} ${fragmentMono.variable}`}
     >
       <body className="grain">
-        <noscript>
-          <style>{`[style*="opacity:0"]{opacity:1 !important;transform:none !important}`}</style>
-        </noscript>
         <SiteHeader />
         {children}
         <SiteFooter />
