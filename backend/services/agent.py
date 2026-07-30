@@ -19,7 +19,17 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from prompts import ANALYZE_PROMPT, REVIEW_PROMPT, FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION, CLASSIFY_PROMPT, FAST_FACT_PROMPT
+from prompts import (
+    ANALYZE_PROMPT,
+    CHAT_ONLY_INSTRUCTION,
+    CHAT_ONLY_PROTOCOL,
+    CLASSIFY_PROMPT,
+    EDIT_ALLOWED_INSTRUCTION,
+    EDIT_PROTOCOL,
+    FAST_FACT_PROMPT,
+    FINAL_RESPONSE_WITH_ACTIONS_PROMPT,
+    REVIEW_PROMPT,
+)
 from routes.notes import create_note_file, append_to_note
 from services.rag import vector_search
 from config import LOOPS_BY_ROUTE, NOTES_DIR
@@ -32,6 +42,9 @@ logger = logging.getLogger(__name__)
 # useful setting: an unrecognised route is a bug, and a bug should not
 # default to the most expensive policy.
 DEFAULT_MAX_LOOPS = 1
+
+# Runaway guard on the notes accumulator, not a compaction target.
+NOTES_CAP = 60
 
 # Short greetings and tokens that are always FAST_FACT without an LLM call
 _FAST_FACT_TOKENS = frozenset({
@@ -88,6 +101,47 @@ def _emit_event(state: ResearchState, event_type: str, content: Any,
     if meta:
         event["meta"] = meta
     state["events"].append(event)
+
+
+def _note_key(note: str) -> str:
+    return " ".join(note.split()).casefold()
+
+
+def _merge_notes(existing: list[str], candidates: list[str]) -> list[str]:
+    """Drop exact duplicates and cap runaway growth.
+
+    research_notes is the only unbounded accumulator here: the full list is
+    re-sent into every later analyze prompt, every review prompt, and the
+    final synthesis, so on deep_research a note from pass one is paid for
+    up to four times. Successive passes over overlapping chunks restate
+    findings verbatim, and dropping those is provably lossless.
+
+    NOTES_CAP is a runaway guard, not a compaction policy: it is generous
+    enough that a normal turn never reaches it, and exists so a pathological
+    analyze output cannot grow the prompt without bound. Real compaction
+    would cost a model call and trade tokens for a quality risk that cannot
+    be checked without a key.
+    """
+    seen = {_note_key(n) for n in existing}
+    room = NOTES_CAP - len(existing)
+    if room <= 0:
+        logger.warning("research notes at the %d cap — dropping %d new notes",
+                       NOTES_CAP, len(candidates))
+        return []
+
+    kept: list[str] = []
+    for note in candidates:
+        key = _note_key(note)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(note)
+
+    if len(kept) > room:
+        logger.warning("research notes hit the %d cap — dropping %d notes",
+                       NOTES_CAP, len(kept) - room)
+        kept = kept[:room]
+    return kept
 
 
 def _account(state: ResearchState, result: ModelResult) -> None:
@@ -202,6 +256,7 @@ async def analyze_node(state: ResearchState) -> ResearchState:
             for line in lines
             if line.strip() and len(line.strip()) > 10
         ]
+        new_notes = _merge_notes(state["research_notes"], new_notes)
         if new_notes:
             state["research_notes"].extend(new_notes)
             _emit_event(state, "note_taking", f"Extracted {len(new_notes)} findings",
@@ -467,11 +522,12 @@ async def final_response_node(state: ResearchState) -> ResearchState:
     active_notes = state["current_note"][:2000] if state["current_note"] else "No active notes."
 
     active_title = state["active_note_title"] or "Untitled"
-    mode_instruction = (
-        EDIT_ALLOWED_INSTRUCTION.format(active_note_title=active_title)
-        if state["allow_edits"]
-        else CHAT_ONLY_INSTRUCTION
-    )
+    if state["allow_edits"]:
+        mode_instruction = EDIT_ALLOWED_INSTRUCTION.format(active_note_title=active_title)
+        action_protocol = EDIT_PROTOCOL
+    else:
+        mode_instruction = CHAT_ONLY_INSTRUCTION
+        action_protocol = CHAT_ONLY_PROTOCOL
 
     # str.replace rather than str.format: the template carries literal JSON
     # braces, which format would read as placeholders.
@@ -483,6 +539,7 @@ async def final_response_node(state: ResearchState) -> ResearchState:
             "active_notes": active_notes,
             "active_note_title": active_title,
             "mode_instruction": mode_instruction,
+            "action_protocol": action_protocol,
         },
         mode="replace",
     )

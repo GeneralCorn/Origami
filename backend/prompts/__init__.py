@@ -6,7 +6,13 @@ All LLM prompts live here so they can be edited independently of code logic.
 
 from prompts.analyze import ANALYZE_PROMPT
 from prompts.review import REVIEW_PROMPT
-from prompts.final_response import FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION
+from prompts.final_response import (
+    FINAL_RESPONSE_WITH_ACTIONS_PROMPT,
+    CHAT_ONLY_INSTRUCTION,
+    CHAT_ONLY_PROTOCOL,
+    EDIT_ALLOWED_INSTRUCTION,
+    EDIT_PROTOCOL,
+)
 from prompts.contextualizer import CONTEXTUALIZER_PROMPT
 from prompts.classify import CLASSIFY_PROMPT, FAST_FACT_PROMPT
 
@@ -15,7 +21,9 @@ __all__ = [
     "REVIEW_PROMPT",
     "FINAL_RESPONSE_WITH_ACTIONS_PROMPT",
     "CHAT_ONLY_INSTRUCTION",
+    "CHAT_ONLY_PROTOCOL",
     "EDIT_ALLOWED_INSTRUCTION",
+    "EDIT_PROTOCOL",
     "CONTEXTUALIZER_PROMPT",
     "CLASSIFY_PROMPT",
     "FAST_FACT_PROMPT",

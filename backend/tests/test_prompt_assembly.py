@@ -85,3 +85,70 @@ async def test_stub_mode_dumps_the_request_with_its_cache_block():
     assert content[0]["cache_control"] == {"type": "ephemeral"}
     assert "DOC BODY" in content[0]["text"]
     assert "CHUNK BODY" in content[1]["text"]
+
+
+def _final_prompt(allow_edits: bool) -> str:
+    from prompts import (
+        CHAT_ONLY_INSTRUCTION,
+        CHAT_ONLY_PROTOCOL,
+        EDIT_ALLOWED_INSTRUCTION,
+        EDIT_PROTOCOL,
+        FINAL_RESPONSE_WITH_ACTIONS_PROMPT,
+    )
+
+    return Prompt.render(
+        FINAL_RESPONSE_WITH_ACTIONS_PROMPT,
+        {
+            "history": "user: hi",
+            "notes_text": "- a finding",
+            "active_notes": "notes",
+            "active_note_title": "Paper",
+            "mode_instruction": (
+                EDIT_ALLOWED_INSTRUCTION.format(active_note_title="Paper")
+                if allow_edits else CHAT_ONLY_INSTRUCTION
+            ),
+            "action_protocol": EDIT_PROTOCOL if allow_edits else CHAT_ONLY_PROTOCOL,
+        },
+        mode="replace",
+    ).text
+
+
+def test_chat_only_mode_does_not_ship_the_edit_protocol():
+    """CHAT_ONLY_INSTRUCTION already forbids edit and create.
+
+    Sending their schemas and the filename rule anyway is instructions the
+    mode instruction has ruled out.
+    """
+    prompt = _final_prompt(allow_edits=False)
+    assert '"action": "create"' not in prompt
+    assert '"action": "edit"' not in prompt
+    assert "filename" not in prompt
+    assert '"action": "chat"' in prompt
+
+
+def test_edit_mode_still_ships_the_full_protocol():
+    prompt = _final_prompt(allow_edits=True)
+    assert '"action": "create"' in prompt
+    assert '"action": "edit"' in prompt
+    assert "filename" in prompt
+
+
+def test_math_rules_survive_in_both_modes():
+    """Not gated on route or content: a bare-LaTeX answer is a wrong answer."""
+    for allow_edits in (True, False):
+        prompt = _final_prompt(allow_edits)
+        assert "NEVER write bare LaTeX" in prompt
+        assert "$$" in prompt
+
+
+def test_no_placeholders_survive_substitution():
+    for allow_edits in (True, False):
+        prompt = _final_prompt(allow_edits)
+        for field in ("{history}", "{notes_text}", "{active_notes}",
+                      "{mode_instruction}", "{action_protocol}", "{active_note_title}"):
+            assert field not in prompt
+
+
+def test_chat_only_protocol_is_materially_smaller():
+    saved = len(_final_prompt(allow_edits=True)) - len(_final_prompt(allow_edits=False))
+    assert saved > 300
