@@ -19,6 +19,19 @@
 
   --shadow-frame: 0 1px 2px rgba(33, 28, 22, 0.06), 0 24px 48px -16px rgba(33, 28, 22, 0.18), 0 64px 96px -48px rgba(33, 28, 22, 0.22);
   --shadow-card: 0 1px 2px rgba(33, 28, 22, 0.05), 0 12px 32px -16px rgba(33, 28, 22, 0.12);
+
+  /* No curve on this site may have a control-point y outside [0, 1]. Paper has
+     no elastic rebound about a scored crease, and overshoot is the loudest tell
+     of template motion. The rule is greppable, and it pre-satisfies the
+     reduced-motion requirement on the fold: there is no overshoot to suppress
+     because none can be produced. Durations follow travel, not importance:
+     120ms colour only, 180ms under 4px, 280ms for 4-24px, 640ms for the 24-32px
+     entrance, 1100ms for a rule being scored. The band 250-500ms is forbidden
+     for anything under direct pointer control. */
+  --ease-settle: cubic-bezier(0.22, 0.55, 0.24, 1);
+  --ease-hover: cubic-bezier(0.2, 0.6, 0.35, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 0.6);
+  --ease-crease: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 @theme inline {
@@ -55,8 +68,12 @@
     }
   }
 
+  /* The load entrance is unopposed and is the one place a grander pace is
+     earned, so it keeps 0.8s. The scroll reveal competes with the scroll
+     gesture: at 0.75s an element outlasted a comfortable flick and was still
+     fading in while already leaving the viewport, so it runs at 0.64s. */
   .rise {
-    animation: rise 0.8s cubic-bezier(0.22, 0.55, 0.24, 1) both;
+    animation: rise 0.8s var(--ease-settle) both;
   }
 
   .reveal-armed {
@@ -68,8 +85,8 @@
     opacity: 1;
     transform: none;
     transition:
-      opacity 0.75s cubic-bezier(0.22, 0.55, 0.24, 1),
-      transform 0.75s cubic-bezier(0.22, 0.55, 0.24, 1);
+      opacity 0.64s var(--ease-settle),
+      transform 0.64s var(--ease-settle);
   }
 
   @media (prefers-reduced-motion: reduce) {
