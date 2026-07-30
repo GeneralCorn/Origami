@@ -292,7 +292,9 @@ export default function ChromaDocumentList({
                     </div>
                   </div>
                   <div className="flex-shrink-0 flex items-center gap-0.5">
-                    {onOpenReader && (
+                    {/* The reader resolves a name against pdfs/, so it is
+                        offered only for documents that live there. */}
+                    {onOpenReader && doc.source_type === "pdf" && (
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() =>

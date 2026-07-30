@@ -117,6 +117,9 @@ export default function NamingDialog({
             <Input
               ref={inputRef}
               value={name}
+              // Mirrors MAX_TITLE_CHARS in the backend, which copies the
+              // title onto every one of a document's segments.
+              maxLength={80}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleConfirm();

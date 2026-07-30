@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import UploadDropzone from "./upload-dropzone";
 import ChromaDocumentList from "./chroma-document-list";
 import NoteList from "./note-list";
+import SnippetCapture from "./snippet-capture";
 import type { NoteFile } from "@/types";
 
 interface DocumentDrawerProps {
@@ -72,6 +73,18 @@ export default function DocumentDrawer({
             onDelete={onDeleteNote}
             onRefresh={onRefreshNotes}
           />
+        </div>
+
+        {/* Snippet */}
+        <div className="border-b border-thin border-border">
+          <div className="flex items-center px-4 py-1.5">
+            <span className="text-[10px] font-medium text-muted-foreground/70 tracking-wide uppercase">
+              Snippet
+            </span>
+          </div>
+          <div className="px-3 pb-3">
+            <SnippetCapture onIngestionStarted={handleIngestionStarted} />
+          </div>
         </div>
 
         {/* Upload */}

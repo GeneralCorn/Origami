@@ -95,6 +95,28 @@ def find_by_hash(content_hash: str) -> dict | None:
     return None
 
 
+def item_completion(file_id: str) -> tuple[int, int]:
+    """(segments stored, segments expected) for one Item.
+
+    Expected is 0 when the store cannot say, which is the case for every
+    record written before `segment_total` existed. Callers must read that
+    as "assume complete": guessing incomplete would re-ingest a whole
+    pre-existing library.
+    """
+    col = get_collection()
+    if col.count() == 0:
+        return 0, 0
+    # include=[] binds no per-row variable and pulls no original_chunk, so
+    # counting a 2,000-chunk document costs nothing; only the one record
+    # the expected count is read off needs its metadata.
+    stored = len(col.get(where={"file_id": file_id}, include=[])["ids"])
+    if not stored:
+        return 0, 0
+    head = col.get(where={"file_id": file_id}, include=["metadatas"], limit=1)["metadatas"]
+    expected = head[0].get("segment_total", 0) if head else 0
+    return stored, expected if isinstance(expected, int) else 0
+
+
 def _load_saved_tags() -> list[str]:
     """Load user-saved tags from disk."""
     if not SAVED_TAGS_FILE.exists():
@@ -121,6 +143,20 @@ def list_all_tags() -> list[str]:
         for meta in results["metadatas"] or []:
             tags.update(meta.get("tags", []))
     return sorted(tags)
+
+
+def indexed_file_ids() -> set[str]:
+    """Every file_id present in the collection.
+
+    A full metadata scan, the same shape as list_all_tags. Reading ids and
+    splitting on the ordinal suffix would be cheaper but would misparse any
+    file_id that itself ends in "-<digits>".
+    """
+    col = get_collection()
+    if col.count() == 0:
+        return set()
+    results = col.get(include=["metadatas"])
+    return {meta.get("file_id", "") for meta in results["metadatas"] or []} - {""}
 
 
 def get_document_meta(file_id: str) -> dict | None:

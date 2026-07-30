@@ -181,6 +181,14 @@ def _backfill_record(meta: dict, model_id: str) -> dict:
     ingested_at is deliberately left empty. copy2 preserves the *source*
     mtime, so a PDF's mtime is the author's timestamp rather than the time
     Origami saw it. An empty string is honest; a plausible wrong value is not.
+
+    The v2->v3 hop also corrects content_source, which v2 wrote against
+    the embedded string rather than the citable text: a contextualised
+    chunk of human prose was stored as "generated". The rewrite is exact
+    rather than a guess, because the two meanings only ever diverged on
+    text-modality segments, whose citable text is verbatim by
+    construction, and the fact the old value carried is still on the
+    record under context_status.
     """
     record = read_schema_fields(meta)
     filename = meta.get("filename", "")
@@ -193,6 +201,8 @@ def _backfill_record(meta: dict, model_id: str) -> dict:
     for key, value in derived.items():
         if not record[key]:
             record[key] = value
+    if record["modality"] == "text":
+        record["content_source"] = "extracted"
     record["schema_version"] = SCHEMA_VERSION
     return record
 

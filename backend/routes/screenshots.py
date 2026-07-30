@@ -1,8 +1,6 @@
 """Screenshot upload, VLM processing, and digest API routes."""
 
-import asyncio
 import logging
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,14 +9,15 @@ from pydantic import BaseModel
 from starlette.responses import FileResponse
 
 from config import SCREENSHOTS_DIR
-from services.chroma import hash_bytes
+from services.chroma import delete_chunks, hash_bytes, indexed_file_ids
+from services.screenshot_ingest import index_screenshot
 from services.vision import check_ollama_health, analyze_screenshot
 from services.digest import (
     append_to_digest,
+    digest_filenames,
     get_digest,
     list_digests,
     move_from_review,
-    get_processed_filenames,
 )
 
 router = APIRouter()
@@ -33,6 +32,35 @@ def _safe_ext(filename: str) -> str:
     return ext if ext in ALLOWED_EXTENSIONS else ".png"
 
 
+def _existing_by_hash(content_hash: str) -> Path | None:
+    """The screenshot already on disk holding these exact bytes, if any.
+
+    Uploads are named after their content hash, so this is a lookup rather
+    than a scan. It has to be a disk check: the store only learns about a
+    screenshot when /screenshots/process indexes it, so a Chroma lookup
+    leaves every screenshot that is still pending outside the dedup
+    window, which is the entire window that matters for a capture the user
+    just took twice. The extension is not part of the identity, because
+    the same bytes saved as .png and as .jpg are still one screenshot.
+    """
+    for ext in ALLOWED_EXTENSIONS:
+        path = SCREENSHOTS_DIR / f"{content_hash}{ext}"
+        if path.exists():
+            return path
+    return None
+
+
+def _processed_names() -> set[str]:
+    """Filenames of screenshots that must not be analysed again.
+
+    The union of the two records that exist. indexed_file_ids() is the
+    store, which is authoritative for anything this branch ingested;
+    digest_filenames() covers the history that predates it, where the
+    digest was the only record kept.
+    """
+    return indexed_file_ids() | digest_filenames()
+
+
 # ── Upload ────────────────────────────────────────────────────────
 
 
@@ -41,17 +69,35 @@ async def upload_screenshots(files: list[UploadFile] = File(...)):
     """Upload one or more screenshots. Saves to disk, no Ollama needed."""
     results = []
     for file in files:
-        file_id = str(uuid.uuid4())
-        ext = _safe_ext(file.filename or "image.png")
-        filename = f"{file_id}{ext}"
-        file_path = SCREENSHOTS_DIR / filename
-
         content = await file.read()
-        file_path.write_bytes(content)
-
         content_hash = hash_bytes(content)
+
+        # Checked before the write, so a duplicate never lands on disk and
+        # never becomes a pending item that re-processes to the same
+        # segments.
+        existing = _existing_by_hash(content_hash)
+        if existing:
+            results.append({
+                "id": existing.name,
+                "filename": existing.name,
+                "original_name": file.filename,
+                "size": len(content),
+                "content_hash": content_hash,
+                "status": "duplicate",
+                "duplicate": True,
+            })
+            logger.info(f"Skipped duplicate screenshot: {existing.name}")
+            continue
+
+        # Named after the content hash rather than a fresh uuid4, which is
+        # what makes the check above a lookup instead of a rescan of every
+        # screenshot the user ever captured.
+        ext = _safe_ext(file.filename or "image.png")
+        filename = f"{content_hash}{ext}"
+        (SCREENSHOTS_DIR / filename).write_bytes(content)
+
         results.append({
-            "id": file_id,
+            "id": filename,
             "filename": filename,
             "original_name": file.filename,
             "size": len(content),
@@ -69,7 +115,7 @@ async def upload_screenshots(files: list[UploadFile] = File(...)):
 @router.get("/screenshots/pending")
 async def list_pending():
     """List screenshots that haven't been processed by the VLM yet."""
-    processed = get_processed_filenames()
+    processed = _processed_names()
     pending = []
     for path in SCREENSHOTS_DIR.iterdir():
         if path.suffix.lower() in ALLOWED_EXTENSIONS and path.name not in processed:
@@ -101,10 +147,10 @@ async def process_screenshots():
             detail="Ollama is not running or the VLM model is not available. Start Ollama first.",
         )
 
-    processed_names = get_processed_filenames()
+    processed = _processed_names()
     pending_paths = [
         p for p in SCREENSHOTS_DIR.iterdir()
-        if p.suffix.lower() in ALLOWED_EXTENSIONS and p.name not in processed_names
+        if p.suffix.lower() in ALLOWED_EXTENSIONS and p.name not in processed
     ]
 
     if not pending_paths:
@@ -117,6 +163,10 @@ async def process_screenshots():
     for path in pending_paths:
         try:
             vision_result = await analyze_screenshot(path)
+            # Indexed before the digest append: Chroma is the store and the
+            # digest is a view. If indexing raises, nothing is appended and
+            # the file stays pending, so the retry is clean.
+            await index_screenshot(path, vision_result)
             append_to_digest(vision_result, path.name)
             if vision_result.get("confidence") == "low":
                 needs_review += 1
@@ -199,9 +249,14 @@ async def get_screenshot_file(name: str):
 
 @router.delete("/screenshots/{name}")
 async def delete_screenshot(name: str):
-    """Delete a screenshot file."""
+    """Delete a screenshot file and the segments derived from it.
+
+    Without the segment delete, the knowledge base keeps OCR and caption
+    records citing an image that is no longer on disk.
+    """
+    deleted_chunks = delete_chunks(name)
     path = SCREENSHOTS_DIR / name
     if path.exists():
         path.unlink()
-        logger.info(f"Deleted screenshot: {name}")
-    return {"deleted": True}
+        logger.info(f"Deleted screenshot: {name} ({deleted_chunks} segments)")
+    return {"deleted": True, "deleted_chunks": deleted_chunks}

@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from config import PDFS_DIR
+from config import DATA_DIR, PDFS_DIR
 from services.chroma import get_collection, get_document_meta, set_tags, set_title, delete_chunks
 
 router = APIRouter()
@@ -38,6 +38,9 @@ async def list_documents():
                 "file_id": fid,
                 "filename": meta.get("filename", "unknown"),
                 "title": meta.get("title", meta.get("filename", "unknown")),
+                # The list is no longer PDFs only, and the renderer has to
+                # tell sources apart to know which ones the reader opens.
+                "source_type": meta.get("source_type", "pdf"),
                 "chunk_count": 0,
                 "tags": meta.get("tags", []),
                 "publish_date": meta.get("publish_date") or None,
@@ -91,20 +94,25 @@ async def update_title(file_id: str, req: TitleRequest):
 
 @router.delete("/documents/{file_id}")
 async def delete_document(file_id: str):
-    """Delete everything for a document: ChromaDB chunks and PDF file."""
-    # 1. Look up filename before deleting chunks
+    """Delete everything for a document: its segments and its raw bytes."""
+    # 1. Look up the raw reference before deleting the segments
     meta = get_document_meta(file_id)
 
-    # 2. Delete ChromaDB chunks
+    # 2. Delete ChromaDB segments
     deleted_chunks = delete_chunks(file_id)
     if deleted_chunks:
         logger.info(f"Deleted {deleted_chunks} chunks for file_id={file_id}")
 
-    # 3. Delete PDF file from disk
+    # 3. Delete the raw file. Resolved through raw_ref, because the store
+    # now holds screenshots and snippets whose bytes are not under PDFS_DIR;
+    # the filename fallback only serves v1 records, written before raw_ref
+    # existed. raw_ref comes from stored metadata, so containment in
+    # DATA_DIR is checked before anything is unlinked.
     if meta:
-        pdf_path = PDFS_DIR / meta["filename"]
-        if pdf_path.exists():
-            pdf_path.unlink()
-            logger.info(f"Deleted PDF file: {meta['filename']}")
+        raw_ref = meta.get("raw_ref", "")
+        raw_path = (DATA_DIR / raw_ref).resolve() if raw_ref else PDFS_DIR / meta.get("filename", "")
+        if raw_path.is_relative_to(DATA_DIR.resolve()) and raw_path.is_file():
+            raw_path.unlink()
+            logger.info(f"Deleted raw file: {raw_path.name}")
 
     return {"deleted_chunks": deleted_chunks}

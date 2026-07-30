@@ -33,7 +33,14 @@ async def _run_turn(monkeypatch, route: str) -> dict:
 
     async def fake_search(q, n_results=5, file_ids=None):
         return [
-            {"text": f"chunk {i} about scaling", "source": "paper.pdf", "prov_trust": "trusted"}
+            {
+                "text": f"chunk {i} about scaling",
+                "source": "paper.pdf",
+                "source_type": "pdf",
+                "modality": "text",
+                "content_source": "extracted",
+                "prov_trust": "trusted",
+            }
             for i in range(5)
         ]
 
@@ -232,6 +239,24 @@ def test_the_usage_dir_is_not_committable():
     easy to forget.
     """
     for candidate in ("backend/usage/usage-2026-07.jsonl", "backend/usage/requests/turn-0-classify.json"):
+        proc = subprocess.run(
+            ["git", "check-ignore", "-q", candidate],
+            cwd=_REPO, capture_output=True,
+        )
+        assert proc.returncode == 0, f"{candidate} is not gitignored"
+
+
+def test_captured_content_dirs_are_not_committable():
+    """Same hazard as the usage dir, for every directory that holds captured text.
+
+    notes/ and pdfs/ are deliberately tracked and so are excluded here; these
+    three carry content the user never chose to put in a repository.
+    """
+    for candidate in (
+        "backend/screenshots/shot.png",
+        "backend/digests/2026-07-30.md",
+        "backend/snippets/snippet.md",
+    ):
         proc = subprocess.run(
             ["git", "check-ignore", "-q", candidate],
             cwd=_REPO, capture_output=True,

@@ -39,6 +39,13 @@ backend/models/
 # ignored even though the ledger itself records no content.
 backend/usage/
 
+# captured user content. In the dev layout DATA_DIR is the backend folder
+# itself, so these are created inside the working tree and a plain `git add -A`
+# would commit the user's own screenshots, digests and snippets.
+backend/screenshots/
+backend/digests/
+backend/snippets/
+
 # runtime data (kept tracked temporarily for easy sync)
 # backend/notes/
 # backend/pdfs/

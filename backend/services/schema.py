@@ -12,7 +12,7 @@ from typing import Literal
 
 from config import DATA_DIR
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SourceType = Literal["pdf", "note", "snippet", "screenshot", "photo", "calendar", "message"]
 Modality = Literal["text", "ocr", "caption", "transcript"]
@@ -51,6 +51,24 @@ class Item:
 
 @dataclass(frozen=True)
 class Segment:
+    """One retrievable unit of an Item.
+
+    `content` is the string that gets embedded. `content_source` describes
+    the *citable* text instead, which is the segment as its author wrote
+    it: `original_chunk` in Chroma, and what services.rag returns as
+    `text`. ARCHITECTURE_V2 section 2 asks the field one question, "did
+    this come out of the artifact or did a model invent it", and a
+    consumer can only act on the answer if it holds for every source.
+
+    The distinction matters because contextualisation prepends a
+    model-written blurb to `content` without touching the citable text.
+    That is recorded by `context_status`, not here. Flipping
+    content_source on a successful contextualisation is what made the
+    field mean "the embedded string is partly generated" on the pdf and
+    snippet paths and "the citable text is wholly generated" on the
+    caption path, so no filter over it could be written.
+    """
+
     ordinal: int
     modality: Modality
     content: str
@@ -74,6 +92,38 @@ def provenance_for_upload() -> Provenance:
     and its text can carry instructions aimed at the agent.
     """
     return Provenance(origin="self", trust="untrusted", channel="upload")
+
+
+def provenance_for_screenshot() -> Provenance:
+    """A screenshot, of content Origami cannot attribute.
+
+    trust is `untrusted` and section 3 names this case verbatim: "the OCR
+    of a screenshot of a web page" is on its untrusted list.
+
+    origin is `unknown` rather than `self`. The upload factory's `self`
+    rests on the user having chosen a file from their own machine, which
+    says something about the file. A screenshot is a picture of an
+    application surface whose content may be the user's own draft, a
+    colleague's message, or a public page, and the only signal available
+    is the VLM's source_app guess, which is model output and must never
+    decide a security-adjacent field.
+    """
+    return Provenance(origin="unknown", trust="untrusted", channel="screenshot")
+
+
+def provenance_for_snippet() -> Provenance:
+    """Text the user captured from somewhere else.
+
+    Section 3 reads "content Origami did not receive from the user
+    directly is untrusted", and its own gloss settles what "directly"
+    means: "the text inside a PDF someone emailed" is untrusted even
+    though the user handed the PDF over. The test is authorship, not
+    delivery, because the rule "is a statement about whether the bytes
+    could contain instructions aimed at the agent". Pasted bytes can.
+    Typing is the only act section 3 calls trusted, and pasting into
+    Origami's own textarea is not typing.
+    """
+    return Provenance(origin="unknown", trust="untrusted", channel="snippet")
 
 
 def data_relative(path: Path) -> str:
