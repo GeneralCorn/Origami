@@ -2,7 +2,7 @@
 
 A local-first AI research assistant, becoming a personal knowledge base.
 
-Upload PDFs, write Markdown notes, and chat with an agent that has real context over both. Everything runs on your machine. No API key, no account, no data leaving your computer.
+Upload PDFs, write Markdown notes, and chat with an agent that has real context over both. Your files, your embeddings, and the index stay on your machine, and there is no account. Reasoning is the part that reaches the network: the agent runs on Anthropic's API using a key you supply, so the passages it retrieves and the note you have open are sent on the turns it answers.
 
 **Today:** a working research assistant for documents and notes.
 **Next:** a signed macOS desktop app that ingests from the rest of your life. See [Roadmap](#roadmap).
