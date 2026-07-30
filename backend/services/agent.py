@@ -634,15 +634,17 @@ async def classify_query(
     history: str,
     note_preview: str,
     budget: Budget,
-) -> str:
+) -> tuple[str, ModelResult | None]:
     """Classify query into fast_fact | normal_rag | deep_research.
 
     Uses cheap heuristics first, falls back to Haiku for ambiguous cases.
-    Returns one of: 'fast_fact', 'normal_rag', 'deep_research'.
 
-    Takes the turn's budget so the classifier's own tokens are recorded
-    against the turn it classifies. They used to be discarded entirely,
-    which understated every turn by one Haiku call.
+    Returns the route and the classifier's own ModelResult, or None when a
+    free heuristic decided it. The result is returned rather than dropped
+    because the caller has to fold it into the turn's totals: the ledger row
+    was already being written here, but discarding the result meant the cost
+    and token counts rendered in the chat footer covered one fewer call than
+    the total_calls printed beside them.
     """
     q = query.strip().lower()
 
@@ -654,13 +656,13 @@ async def classify_query(
     # this pipeline could claim.
     if q.rstrip(".!?,").strip() in _FAST_FACT_TOKENS:
         logger.info("[ROUTE] heuristic → fast_fact (greeting)")
-        return "fast_fact"
+        return "fast_fact", None
 
     # Heuristic: explicit deep-research keywords
     deep_keywords = ("compare", "synthesize", "across all", "literature", "comprehensive", "all papers")
     if any(k in q for k in deep_keywords):
         logger.info("[ROUTE] heuristic → deep_research (keyword match)")
-        return "deep_research"
+        return "deep_research", None
 
     # LLM classifier for everything else
     prompt = Prompt.render(CLASSIFY_PROMPT, {
@@ -673,10 +675,10 @@ async def classify_query(
     logger.info("[ROUTE] LLM classifier → %s (%.3fs)", text, result.elapsed_s)
 
     if "FAST_FACT" in text:
-        return "fast_fact"
+        return "fast_fact", result
     if "DEEP_RESEARCH" in text:
-        return "deep_research"
-    return "normal_rag"
+        return "deep_research", result
+    return "normal_rag", result
 
 
 async def _stream_fast_fact(
@@ -754,11 +756,12 @@ research_agent = build_research_graph()
 async def _prepare_turn(
     messages: list[dict[str, str]],
     current_note: str,
-) -> tuple[str, str, str, int, Budget]:
+) -> tuple[str, str, str, int, Budget, ModelResult | None]:
     """Resolve the user query, history window, route, and per-turn budget.
 
     Runs before the graph so the classifier's own tokens land on the same
-    turn_id as the rest of the turn.
+    turn_id as the rest of the turn, and returns its ModelResult so the
+    caller can fold it into the turn's totals.
     """
     user_query = ""
     for msg in reversed(messages):
@@ -769,11 +772,11 @@ async def _prepare_turn(
     history = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:])
 
     budget = Budget.interactive()
-    route = await classify_query(user_query, history, current_note, budget)
+    route, classify_result = await classify_query(user_query, history, current_note, budget)
     max_loops = LOOPS_BY_ROUTE.get(route, DEFAULT_MAX_LOOPS)
     budget.adopt_route(route, max_loops)
 
-    return user_query, history, route, max_loops, budget
+    return user_query, history, route, max_loops, budget, classify_result
 
 
 def _initial_state(
@@ -831,12 +834,20 @@ async def stream_research_agent(
     Yields dicts with:
         {"type": "searching"|"reasoning"|"note_taking"|"text"|"action", "content": ...}
     """
-    user_query, history, route, max_loops, budget = await _prepare_turn(messages, current_note)
+    user_query, history, route, max_loops, budget, classify_result = await _prepare_turn(
+        messages, current_note
+    )
 
     state = _initial_state(
         messages, current_note, user_query, route, max_loops, budget,
         allow_edits, active_note_title, active_note_id, scope,
     )
+    # The classifier runs before the graph, so its usage has to be seeded
+    # onto the state the graph starts from. Folding it through the same
+    # _account the nodes use is what keeps total_cost_usd and total_calls
+    # describing the same set of calls.
+    if classify_result is not None:
+        _account(state, classify_result)
 
     # Fast-fact: skip the graph entirely
     if route == "fast_fact":

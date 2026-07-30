@@ -19,6 +19,7 @@ from typing import Any
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
+import prompts
 from config import (
     ANTHROPIC_API_KEY,
     CHEAP_FINAL,
@@ -71,7 +72,21 @@ CONTEXT_FREE_FIELDS = frozenset({
     "whole_document", "chunk_content", "mode_instruction", "action_protocol",
 })
 
-_PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9_]*)\}")
+# Case-insensitive on purpose. A lowercase-only pattern let {History} slip
+# past both the classification check and the session-state derivation, which
+# turned the choice of capital letter into a way out of Lever 2.
+_PLACEHOLDER = re.compile(r"\{([A-Za-z][A-Za-z0-9_]*)\}")
+
+# The closed set of texts this backend may send. Membership is by value, so
+# only a module-level constant in prompts/ qualifies; a string a caller
+# built at runtime does not, however it was spelled. Without this, Lever 2
+# was enforced by placeholder name alone and an f-string that pasted the
+# conversation straight into the template carried no fields at all, so it
+# derived carries_session_state=False and a background permit sent it.
+_REGISTERED_TEMPLATES: frozenset[str] = frozenset(
+    value for name in prompts.__all__
+    if isinstance(value := getattr(prompts, name), str)
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +114,11 @@ class Prompt:
         existence; it would have to rename its placeholders out of the
         session vocabulary, which the enforcement tests catch.
 
+        template must be one of the constants in prompts/. That is what
+        makes the derivation meaningful: a caller who interpolates the
+        conversation into the template itself produces a prompt with no
+        fields to derive from, and the gate would wave it through.
+
         mode="replace" exists because FINAL_RESPONSE_WITH_ACTIONS_PROMPT
         contains literal JSON braces and cannot go through str.format.
 
@@ -116,6 +136,13 @@ class Prompt:
             raise ValueError(
                 f"prompt fields {unclassified} are in neither CONTEXT_FIELDS nor "
                 "CONTEXT_FREE_FIELDS — classify them so Budget can gate on them"
+            )
+        if template not in _REGISTERED_TEMPLATES:
+            raise ValueError(
+                "template is not one of the constants exported by prompts/. "
+                "session state pasted into a template carries no fields, so "
+                "Budget cannot gate on it. Add the template to prompts/ and "
+                "pass the variable parts as classified fields."
             )
 
         head, tail = _split_template(template, cache_after)
@@ -231,10 +258,21 @@ def max_calls_for(route: str, max_loops: int) -> int:
     fast_fact is the classifier plus one answer. Every other route is the
     classifier, one analyze per loop, one review per loop after the first
     (the last pass needs no continue-decision), and one final synthesis.
+
+    The review term is floored at zero. Written as 2 * max_loops + 1 it
+    silently subtracted a call at max_loops=0, returning 1, one below the
+    two calls (classify + final_response) every graph route makes before
+    max_loops is even consulted, because it is only read in review_node
+    and review_node runs after retrieve -> analyze. config._parse_loops now
+    refuses 0 for the graph routes, so this is the second of two floors
+    rather than the only one.
     """
     if route == "fast_fact":
         return 2
-    return 2 * max_loops + 1
+    return 1 + max_loops + max(0, max_loops - 1) + 1
+
+
+_INTERACTIVE_ORIGIN = "interactive"
 
 
 @dataclass(slots=True)
@@ -243,10 +281,23 @@ class Budget:
 
     origin: str
     route: str
-    may_send_context: bool
     max_calls: int
     turn_id: str
     calls_made: int = 0
+
+    @property
+    def may_send_context(self) -> bool:
+        """Derived from origin, never stored.
+
+        As a settable field this was one assignment away from defeating
+        Lever 2: Budget is mutable because authorize and adopt_route write
+        to it, so `b = Budget.background(...); b.may_send_context = True`
+        turned a background permit into an interactive one. Deriving it
+        means the only way to obtain the permission is to claim the
+        interactive origin, which tests/test_budget_enforcement.py pins to
+        a single call site.
+        """
+        return self.origin == _INTERACTIVE_ORIGIN
 
     @classmethod
     def interactive(cls, route: str = "", max_loops: int = MAX_LOOPS_CLAMP) -> "Budget":
@@ -258,19 +309,22 @@ class Budget:
         decided. Only the classifier call happens in between.
         """
         return cls(
-            origin="interactive",
+            origin=_INTERACTIVE_ORIGIN,
             route=route,
-            may_send_context=True,
             max_calls=max_calls_for(route, max_loops),
             turn_id=str(uuid.uuid4()),
         )
 
     @classmethod
     def background(cls, origin: str, max_calls: int) -> "Budget":
+        if origin == _INTERACTIVE_ORIGIN:
+            raise ValueError(
+                "background work may not claim the interactive origin, which "
+                "is the only origin permitted to send session state"
+            )
         return cls(
             origin=origin,
             route="",
-            may_send_context=False,
             max_calls=max(1, max_calls),
             turn_id=str(uuid.uuid4()),
         )
@@ -382,7 +436,26 @@ def _to_result(response: Any, spec: ModelSpec, elapsed: float, stub: bool) -> Mo
     reported = (getattr(response, "response_metadata", None) or {}).get("model_name")
     model = spec.model if stub else (reported or spec.model)
 
-    cost, priced = cost_usd(model, input_tokens, output_tokens, cache_read, cache_creation)
+    if stub:
+        # The stub estimates its token counts from character length, so
+        # pricing them at the real per-token rate for the model the router
+        # picked invents dollars. It reported priced=True under the real
+        # model id, which made a keyless development run indistinguishable
+        # from real spend in every month_to_date aggregate. The routed model
+        # id is still recorded, because which model a route picks is a claim
+        # the stub exists to verify. Only the money is withheld.
+        cost, priced = 0.0, False
+    elif not meta:
+        # A response with no usage block would otherwise resolve a real rate
+        # against zeroed counts and record a priced $0.00 call, reporting the
+        # pipeline as free. priced=False routes it to unpriced_calls instead.
+        logger.error(
+            "no usage metadata on a %s response from %s, recording the call as unpriced",
+            spec.model, type(response).__name__,
+        )
+        cost, priced = 0.0, False
+    else:
+        cost, priced = cost_usd(model, input_tokens, output_tokens, cache_read, cache_creation)
     return ModelResult(
         text=strip_think_tags(_response_text(getattr(response, "content", ""))),
         model=model,
@@ -393,6 +466,59 @@ def _to_result(response: Any, spec: ModelSpec, elapsed: float, stub: bool) -> Mo
         elapsed_s=elapsed,
         cost_usd=cost,
         priced=priced,
+    )
+
+
+async def _record_call(
+    purpose: Purpose,
+    budget: Budget,
+    prompt: Prompt,
+    result: ModelResult,
+    loop: int,
+    *,
+    failed: bool,
+) -> None:
+    await usage.record(usage.CallRecord(
+        ts=datetime.now(timezone.utc).isoformat(),
+        purpose=purpose.value,
+        route=budget.route,
+        origin=budget.origin,
+        model=result.model,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        cache_read_tokens=result.cache_read_tokens,
+        cache_creation_tokens=result.cache_creation_tokens,
+        billable_input_tokens=max(
+            0,
+            result.input_tokens - result.cache_read_tokens - result.cache_creation_tokens,
+        ),
+        elapsed_s=round(result.elapsed_s, 4),
+        prompt_chars=prompt.char_count,
+        cost_usd=result.cost_usd,
+        priced=result.priced,
+        turn_id=budget.turn_id,
+        loop=loop,
+        stub=MODEL_STUB,
+        failed=failed,
+    ))
+
+
+def _failed_result(spec: ModelSpec, elapsed: float) -> ModelResult:
+    """The row for a call that was authorized and then raised.
+
+    Zero tokens and priced=False, because nothing was measured: the provider
+    may have billed the input and there is no way to know how much.
+    """
+    return ModelResult(
+        text="",
+        model=spec.model,
+        input_tokens=0,
+        output_tokens=0,
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        elapsed_s=elapsed,
+        cost_usd=0.0,
+        priced=False,
     )
 
 
@@ -414,49 +540,43 @@ async def complete(
     seq = budget.calls_made
 
     t0 = time.perf_counter()
-    if MODEL_STUB:
-        await usage.dump_request(
-            budget.turn_id, seq, purpose.value, _request_payload(purpose, spec, prompt)
-        )
-        response: Any = _stub_response(purpose, prompt)
-    else:
-        if not ANTHROPIC_API_KEY:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY is not set. Set it, or set ORIGAMI_MODEL_STUB=1 "
-                "to run the pipeline against local stubs."
+    try:
+        if MODEL_STUB:
+            await usage.dump_request(
+                budget.turn_id, seq, purpose.value, _request_payload(purpose, spec, prompt)
             )
-        llm = ChatAnthropic(
-            model=spec.model,
-            api_key=ANTHROPIC_API_KEY,
-            temperature=spec.temperature,
-            max_tokens=spec.max_tokens,
+            response: Any = _stub_response(purpose, prompt)
+        else:
+            if not ANTHROPIC_API_KEY:
+                raise RuntimeError(
+                    "ANTHROPIC_API_KEY is not set. Set it, or set ORIGAMI_MODEL_STUB=1 "
+                    "to run the pipeline against local stubs."
+                )
+            llm = ChatAnthropic(
+                model=spec.model,
+                api_key=ANTHROPIC_API_KEY,
+                temperature=spec.temperature,
+                max_tokens=spec.max_tokens,
+            )
+            response = await llm.ainvoke(prompt.to_messages())
+    except Exception as exc:
+        # authorize() already spent the budget slot, so returning here
+        # without a row let the turn's call count exceed its ledger rows and
+        # made ingest's [COST] line understate a document by exactly its
+        # failed chunks, the chunks its own comment calls billed.
+        elapsed = time.perf_counter() - t0
+        logger.error(
+            "[COST] %s route=%s model=%s FAILED after %.3fs, recorded unpriced: %s",
+            purpose.value, budget.route or "-", spec.model, elapsed, exc,
         )
-        response = await llm.ainvoke(prompt.to_messages())
+        await _record_call(
+            purpose, budget, prompt, _failed_result(spec, elapsed), loop, failed=True
+        )
+        raise
     elapsed = time.perf_counter() - t0
 
     result = _to_result(response, spec, elapsed, MODEL_STUB)
-    await usage.record(usage.CallRecord(
-        ts=datetime.now(timezone.utc).isoformat(),
-        purpose=purpose.value,
-        route=budget.route,
-        origin=budget.origin,
-        model=result.model,
-        input_tokens=result.input_tokens,
-        output_tokens=result.output_tokens,
-        cache_read_tokens=result.cache_read_tokens,
-        cache_creation_tokens=result.cache_creation_tokens,
-        billable_input_tokens=max(
-            0,
-            result.input_tokens - result.cache_read_tokens - result.cache_creation_tokens,
-        ),
-        elapsed_s=round(elapsed, 4),
-        prompt_chars=prompt.char_count,
-        cost_usd=result.cost_usd,
-        priced=result.priced,
-        turn_id=budget.turn_id,
-        loop=loop,
-        stub=MODEL_STUB,
-    ))
+    await _record_call(purpose, budget, prompt, result, loop, failed=False)
     logger.info(
         "[COST] %s route=%s model=%s %d in (%d cached) / %d out — $%.6f in %.3fs",
         purpose.value, budget.route or "-", result.model, result.input_tokens,

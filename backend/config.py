@@ -3,8 +3,11 @@
 All tunables live here. Copy .env.example → .env.local and adjust.
 """
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _BACKEND_DIR = Path(__file__).resolve().parent
 
@@ -89,15 +92,31 @@ _DEFAULT_LOOPS_BY_ROUTE: dict[str, int] = {
     "deep_research": 3,
 }
 
+# Per-route lower bound. fast_fact bypasses the graph entirely, so its loop
+# count is never read and 0 is the honest value. Every other route runs
+# retrieve -> analyze -> save_notes -> review before max_loops is consulted
+# at all, so 0 there is not a cheaper policy but a broken one: it sets the
+# call ceiling below the calls the pipeline has already made and drops the
+# graph's recursion_limit below one pass, and the turn dies with
+# CallBudgetExceeded or GraphRecursionError on every query, forever.
+_MIN_LOOPS_BY_ROUTE: dict[str, int] = {
+    "fast_fact": 0,
+    "normal_rag": 1,
+    "deep_research": 1,
+}
+
 
 def _parse_loops(raw: str) -> dict[str, int]:
     """Parse "fast_fact=0,normal_rag=1,deep_research=3" over the defaults.
 
-    Every value is clamped to 0..MAX_LOOPS_CLAMP because this is the only
-    knob that multiplies the per-turn call count, and an unclamped typo
-    would bill an unbounded number of retrieval passes. Unparseable entries
-    and unknown route names are dropped rather than raising, so a bad
-    override degrades to the default policy instead of failing startup.
+    Every value is clamped to _MIN_LOOPS_BY_ROUTE..MAX_LOOPS_CLAMP because
+    this is the only knob that multiplies the per-turn call count: an
+    unclamped typo would bill an unbounded number of retrieval passes, and
+    a value below the floor would break the route outright. Unparseable
+    entries and unknown route names are dropped rather than raising, so a
+    bad override degrades to the default policy instead of failing startup.
+    The clamp is logged, so an override that did not take effect is
+    diagnosable rather than silent.
     """
     loops = dict(_DEFAULT_LOOPS_BY_ROUTE)
     for entry in raw.split(","):
@@ -109,9 +128,16 @@ def _parse_loops(raw: str) -> dict[str, int]:
         if name not in loops:
             continue
         try:
-            loops[name] = max(0, min(MAX_LOOPS_CLAMP, int(value.strip())))
+            requested = int(value.strip())
         except ValueError:
             continue
+        clamped = max(_MIN_LOOPS_BY_ROUTE[name], min(MAX_LOOPS_CLAMP, requested))
+        if clamped != requested:
+            logger.warning(
+                "ORIGAMI_LOOPS_BY_ROUTE: %s=%d is outside %d..%d, using %d",
+                name, requested, _MIN_LOOPS_BY_ROUTE[name], MAX_LOOPS_CLAMP, clamped,
+            )
+        loops[name] = clamped
     return loops
 
 

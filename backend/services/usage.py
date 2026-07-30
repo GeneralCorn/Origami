@@ -46,6 +46,12 @@ class CallRecord:
     turn_id: str
     loop: int
     stub: bool
+    # The call was authorized and attempted but raised, so its token counts
+    # are unknown while the provider may still have billed the input. Rows
+    # like this exist so a turn's call count always matches its ledger rows;
+    # they carry zero tokens and priced=False, and are counted separately
+    # from a merely unpriced model so "spent and lost" stays visible.
+    failed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +123,14 @@ async def dump_request(turn_id: str, seq: int, purpose: str, payload: dict[str, 
     This is the only place request payloads touch disk, and it is reachable
     only when ORIGAMI_MODEL_STUB is set — i.e. in tests and in a keyless
     development run, never on a path that serves a real user.
+
+    Unlike the ledger, these files DO hold prompt text: up to
+    CONTEXT_DOC_CHARS of the user's document, or the conversation window.
+    That is the point, because the cache-block structure can only be proven against
+    the real bytes. It also means the directory is user content, so DATA_DIR
+    is where it belongs and the repository's .gitignore covers backend/usage
+    for the default dev layout, where DATA_DIR is the backend folder itself
+    and `git add -A` would otherwise commit the user's documents.
     """
     try:
         REQUESTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -182,14 +196,21 @@ def _iter_lines(path: Path):
 
 
 def month_to_date(when: datetime | None = None) -> dict[str, Any]:
-    """Aggregate the current month's ledger, streaming line by line."""
+    """Aggregate the current month's ledger, streaming line by line.
+
+    A stub row carries no cost, so the dollar total is real money only. Its
+    token counts are estimates from character length, and they do land in
+    the totals, so the "stub" block reports the stub subtotal separately and
+    a blended month stays subtractable rather than merely flagged.
+    """
     total = _Totals()
+    stub = _Totals()
     by_purpose = _Group()
     by_model = _Group()
     by_route = _Group()
     by_origin = _Group()
     unpriced_calls = 0
-    stub_calls = 0
+    failed_calls = 0
 
     for row in _iter_lines(ledger_path(when)):
         total.add(row)
@@ -197,10 +218,14 @@ def month_to_date(when: datetime | None = None) -> dict[str, Any]:
         by_model.add(str(row.get("model", "")), row)
         by_route.add(str(row.get("route", "")), row)
         by_origin.add(str(row.get("origin", "")), row)
-        if not row.get("priced", False):
-            unpriced_calls += 1
         if row.get("stub", False):
-            stub_calls += 1
+            stub.add(row)
+        # Counted only for real calls, so this keeps meaning "a model with no
+        # price entry" rather than blending in every stubbed development run.
+        elif not row.get("priced", False):
+            unpriced_calls += 1
+        if row.get("failed", False):
+            failed_calls += 1
 
     strategies: dict[str, int] = {}
     for row in _iter_lines(json_strategy_path(when)):
@@ -210,8 +235,10 @@ def month_to_date(when: datetime | None = None) -> dict[str, Any]:
     return {
         "month": _stamp(when),
         "total": total.as_dict(),
+        "stub": stub.as_dict(),
         "unpriced_calls": unpriced_calls,
-        "stub_calls": stub_calls,
+        "stub_calls": stub.calls,
+        "failed_calls": failed_calls,
         "by_purpose": by_purpose.as_dict(),
         "by_model": by_model.as_dict(),
         "by_route": by_route.as_dict(),

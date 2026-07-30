@@ -59,7 +59,16 @@ Rule to encode: **no scheduled task may send the conversation context window.** 
 
 Expected saving: eliminates the single largest failure mode outright.
 
-**Status after Phase 4: enforced, though it is a guardrail rather than a saving today.** No timer, interval, or scheduled job in this repo reaches a model call, so the rule was satisfied by accident. It is now structural: `complete()` requires a `Budget`, only `Budget.interactive()` grants permission to send session state, and `Prompt.carries_session_state` is derived from which placeholders were filled rather than declared by the caller. Four tests in `backend/tests/test_budget_enforcement.py` fail if a background caller gains context, if a second file mints an interactive budget, if a second file constructs `ChatAnthropic`, or if a new prompt placeholder goes unclassified.
+**Status after Phase 4: enforced, though it is a guardrail rather than a saving today.** No timer, interval, or scheduled job in this repo reaches a model call, so the rule was satisfied by accident. It is now structural: `complete()` requires a `Budget`, only `Budget.interactive()` grants permission to send session state, and `Prompt.carries_session_state` is derived from which placeholders were filled rather than declared by the caller. Tests in `backend/tests/test_budget_enforcement.py` fail if a background caller gains context, if a second file mints an interactive budget, if any file hand-builds a `Budget`, if a second file constructs `ChatAnthropic`, or if a new prompt placeholder goes unclassified.
+
+Four ways the first version of this gate could be walked around, all now closed, because a gate whose bypasses are this easy is documentation with a raise in it:
+
+- **Pre-interpolation.** Deriving `carries_session_state` from filled placeholders only binds a caller who *uses* placeholders. A prompt built as an f-string that pasted the conversation into the template carried no fields, derived `False`, and a background permit sent the whole conversation. `Prompt.render` now requires `template` to be one of the constants exported by `prompts/`, matched by value, so a string assembled at runtime cannot be rendered at all.
+- **Capitalisation.** The placeholder pattern was `[a-z][a-z0-9_]*`, so `{History}` matched nothing: it tripped neither the unclassified-field check nor the session-state derivation. The pattern is now case-insensitive, and the test that scans `prompts/` uses the same pattern so the two cannot drift.
+- **A settable permit.** `may_send_context` was a field on a mutable dataclass, mutable by necessity since `authorize` and `adopt_route` write to it, so `b = Budget.background(...); b.may_send_context = True` promoted a background permit in one line. It is now a read-only property derived from `origin`, and `Budget.background` refuses to claim the interactive origin.
+- **An allowlist that looked in the wrong place.** The scan for `Budget.interactive(` covered `services/` and `routes/` only, missing `main.py`, where a job hung off the existing FastAPI lifespan hook would live and which is the single most likely home for the scheduled task this rule exists to stop. It now scans every backend module outside `tests/` and `.venv/`, and separately fails on any direct `Budget(` construction.
+
+One thing that is deliberately *not* closed: a background job may still send arbitrary bytes as `whole_document` or `chunk_content`. That is the line the rule draws, stated in `CONTEXT_FREE_FIELDS`: background work may process the payload it was handed, and may not reach into the live conversation. Ingest depends on it.
 
 A contextvar was considered and rejected: Starlette awaits `BackgroundTasks` inside the same request coroutine, so ingest would inherit "interactive", and the chat endpoint's `StreamingResponse` generator runs after the handler returns, so resetting a token in a `finally` would clear the flag before any node called a model.
 
@@ -85,7 +94,7 @@ Expected saving: proportional to how often easy queries currently run the full l
 
 **Correction:** the per-route policy is not missing. It landed in `df2993e` and is enforced in `review_node`.
 
-**Status after Phase 4: the policy is now tunable and structurally bounded.** The table lives in `config.LOOPS_BY_ROUTE`, overridable through `ORIGAMI_LOOPS_BY_ROUTE` and clamped to 0..5. The exact per-route model-call counts are pinned by `backend/tests/test_loop_bounds.py`:
+**Status after Phase 4: the policy is now tunable and structurally bounded.** The table lives in `config.LOOPS_BY_ROUTE`, overridable through `ORIGAMI_LOOPS_BY_ROUTE`, and clamped to `1..5` for the graph routes and `0..0` for `fast_fact`. The exact per-route model-call counts are pinned by `backend/tests/test_loop_bounds.py`:
 
 | route | max_loops | analyze | review | final | classify | total calls |
 |---|---|---|---|---|---|---|
@@ -96,6 +105,8 @@ Expected saving: proportional to how often easy queries currently run the full l
 `review_node` increments before comparing, so `max_loops=N` yields N analyze passes and N-1 review calls. That is correct rather than an off-by-one: the last pass has no continue-decision to make, so paying a Haiku call to ask whether to loop again when no budget remains would be pure waste. `normal_rag` therefore never calls review, and the test asserts that absence so it reads as intentional.
 
 Two structural backstops now sit under the single enforcement point in `review_node`: `Budget.max_calls`, which raises at the chokepoint, and an explicit `recursion_limit` of `4 * max_loops + 2` on `astream`. Verified by replacing `review_node`'s body so it never completes: the graph stops at 14 supersteps on `deep_research` instead of running to LangGraph's default 25.
+
+Why the lower bound is 1 and not 0. `max_loops` is read in exactly one place, `review_node`, which runs *after* `retrieve -> analyze`. A graph route therefore makes two calls (classify and final_response) before the knob is consulted at all, so `max_loops=0` does not buy a cheaper turn: it sets a ceiling below the calls already made and drops `recursion_limit` below one pass. `ORIGAMI_LOOPS_BY_ROUTE=normal_rag=0` used to be accepted, because the clamp's lower bound was 0 for every route and any negative typo produced it, and every `normal_rag` turn then died with `CallBudgetExceeded` at `analyze`, returning the canned "hit its model-call limit" string forever. Two floors now hold that shut: the clamp refuses sub-1 values for the graph routes and logs the correction, and `max_calls_for` floors its review term so the formula can never return less than `classify + final_response`. `fast_fact` keeps 0 because it bypasses the graph entirely. Pinned by `test_env_override_floors_the_graph_routes_at_one_pass` and `test_a_zeroed_override_still_answers`.
 
 Separately, `classify_query`'s `len(q) < 12` heuristic sent every short question ("why NaN?", "fix eq 3?") down the no-retrieval path, so the user's own documents were never consulted. That inflated the apparent `fast_fact` share, which is the numerator of every saving claim. It is removed.
 
@@ -111,7 +122,9 @@ Three existing behaviours are worth naming because they are live cost centres, d
 
 **Classifier on every research query.** `classify_query()` calls Haiku unless weak heuristics match, adding 1 to 2 seconds and a call to most queries. Cheap per call, but it is on the hot path for every single interaction.
 
-*Worse than described.* Its usage was never extracted at all, so every token total the UI reported understated by one Haiku call on every single turn. The classifier now runs through the same chokepoint and its tokens land on the turn's `turn_id`. It remains Haiku at `max_tokens=10`; the real lever there is the free heuristics, not the model.
+*Worse than described.* Its usage was never extracted at all, so every token total the UI reported understated by one Haiku call on every single turn. The classifier now runs through the same chokepoint, its tokens land on the turn's `turn_id`, and `classify_query` returns its `ModelResult` so the caller folds it into the turn's running totals. It remains Haiku at `max_tokens=10`; the real lever there is the free heuristics, not the model.
+
+That fix originally landed only half way, which is worth recording because the half that was missing is the half the user sees. The ledger row was written, but `classify_query` discarded the returned `ModelResult` and never called `_account`, so `state["total_cost_usd"]` and the token totals began at zero while `total_calls` came from `budget.calls_made`, which the classifier does increment. The chat footer rendered "3 calls" beside a dollar figure covering 2 of them, understating the modal turn by one Haiku call, exactly the defect this section claimed to have fixed. `backend/tests/test_cost_reporting.py` now asserts per-route that the footer's cost, input tokens, output tokens, and call count all equal the ledger's own sum over that turn, against both stub rows and a fake priced provider.
 
 **Multi-tier JSON repair.** The final-response node attempts up to four parsing strategies to recover from LaTeX-in-JSON collisions. Failed parses that trigger a retry are pure waste, and the underlying cause is a prompt problem rather than a parsing problem.
 
@@ -148,6 +161,14 @@ Instrumentation exists and every mechanism above is proven by a test that needs 
 | The under-$5 target | One month of recorded real use |
 
 Rates in `backend/services/pricing.py` were verified against the published pricing page on 2026-07-29. An unknown model reports `priced=False` and is counted in `unpriced_calls`, so a stale table shows as a gap rather than as a silently understated total.
+
+Three things the ledger deliberately refuses to report as money, because a plausible number is worse than an absent one:
+
+- **Stub calls cost nothing.** `_stub_response` estimates its token counts as `char_count // 4`. Those estimates were being priced at the real per-token rate under the real model id, so `ORIGAMI_MODEL_STUB=1`, a documented keyless development mode, wrote fabricated dollars into the same monthly file a real key writes to, indistinguishable from real spend except for one boolean. A stub row is now `priced=False` at `$0.00`. The routed model id is still recorded, because which model a route picks is a claim the stub exists to verify; only the money is withheld. Its estimated tokens do still land in the totals, so `month_to_date` reports a `stub` subtotal alongside `total` and a blended month stays subtractable rather than merely flagged.
+- **A response with no usage block is unpriced, not free.** Zeroed counts against a model that *is* in the price table returned `priced=True` at `$0.00` with no log line, so any systematic loss of usage metadata would have reported the pipeline as free and read as an enormous saving. It now logs an error and reports `priced=False`.
+- **A call that raised still appears.** `Budget.authorize` spends the slot before the request goes out, so a failure used to leave the budget decremented and no ledger row, meaning a turn's `total_calls` could exceed its own rows and ingest's `[COST]` line understated a document by exactly the failed chunks its own comment calls billed. Failures now write a `failed=True`, `priced=False`, zero-token row and are counted in `failed_calls`.
+
+`unpriced_calls` counts only real calls, so it keeps meaning "a model with no price entry" rather than blending in every call of a stubbed run.
 
 ---
 
