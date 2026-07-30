@@ -77,7 +77,9 @@ async def test_deep_research_is_seven_calls(monkeypatch):
     assert sum(counts.values()) == max_calls_for("deep_research", 3) == 7
 
 
-async def test_no_chunks_skips_analyze_entirely(monkeypatch):
+async def test_no_chunks_skips_analyze_and_downgrades_the_final_call(monkeypatch):
+    """An empty retrieval used to pay for Sonnet to say it found nothing."""
+    from config import HAIKU_MODEL
     from services import agent
 
     async def empty_search(q, n_results=5, file_ids=None):
@@ -90,6 +92,10 @@ async def test_no_chunks_skips_analyze_entirely(monkeypatch):
     counts = _counts()
     assert "analyze" not in counts
     assert counts["final_response"] == 1
+
+    rows = [json.loads(line) for line in usage.ledger_path().read_text().splitlines()]
+    final = next(r for r in rows if r["purpose"] == "final_response")
+    assert final["model"] == HAIKU_MODEL
 
 
 async def test_call_ceiling_matches_the_policy_table():

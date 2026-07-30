@@ -21,6 +21,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from config import (
     ANTHROPIC_API_KEY,
+    CHEAP_FINAL,
     HAIKU_MODEL,
     MAX_LOOPS_CLAMP,
     MODEL_STUB,
@@ -180,16 +181,47 @@ class ModelSpec:
 _SPECS: dict[Purpose, ModelSpec] = {
     Purpose.CLASSIFY: ModelSpec(HAIKU_MODEL, 10, 0.0),
     Purpose.FAST_FACT: ModelSpec(HAIKU_MODEL, 1024, 0.3),
+    # Never route analyze to Sonnet. It is the most repeated call in the
+    # pipeline — up to three per turn, each carrying ~1.5k tokens of chunks
+    # plus every accumulated note — so escalating it multiplies the largest
+    # input term by 5x to improve the single synthesis it feeds. Reading
+    # "route by difficulty" as "use the big model on hard queries" would do
+    # exactly that, and it is the wrong move here.
     Purpose.ANALYZE: ModelSpec(HAIKU_MODEL, 2048, 0.0),
-    Purpose.REVIEW: ModelSpec(HAIKU_MODEL, 1024, 0.0),
+    # The prompt constrains the answer to the literal word COMPLETE or one
+    # refined query. 256 bounds the worst case; output is billed on actual
+    # tokens, so this is not itself a saving.
+    Purpose.REVIEW: ModelSpec(HAIKU_MODEL, 256, 0.0),
     Purpose.CONTEXTUALIZE: ModelSpec(HAIKU_MODEL, 100, 0.0),
 }
 
 
 def resolve_model(purpose: Purpose, route: str, *, has_notes: bool = True) -> ModelSpec:
-    """Pick the model and output ceiling for one call. Pure function."""
+    """Pick the model and output ceiling for one call. Pure function.
+
+    Every purpose but the final synthesis is locked to Haiku. The final
+    synthesis never sees retrieved chunks — only Haiku's distilled notes,
+    the last six messages, and the active note — so Sonnet earns its price
+    there only when there is cross-source material to compose from:
+
+    - no notes: nothing to synthesize. This fires whenever retrieval came
+      back empty, which an empty or new knowledge base hits constantly, and
+      today it pays for Sonnet at 4096 output tokens to say it found
+      nothing. Downgraded by default, with no quality bet at all.
+    - deep_research with notes: notes span up to three retrieval passes
+      with query refinement between them. This is the case the product is
+      for, and it is a hard Sonnet floor.
+    - normal_rag with notes: one analyze pass over five chunks. Haiku is
+      structurally defensible and this is the modal turn, but the node must
+      emit a single valid JSON object containing LaTeX and _extract_json
+      already needs four recovery strategies. Downgrading the main answer
+      path on a bet nobody can measure is the worst available trade, so it
+      sits behind ORIGAMI_CHEAP_FINAL until the recorded json_strategy
+      distribution shows Haiku is no worse.
+    """
     if purpose is Purpose.FINAL_RESPONSE:
-        return ModelSpec(SONNET_MODEL, 4096, 0.3)
+        cheap = not has_notes or (route != "deep_research" and CHEAP_FINAL)
+        return ModelSpec(HAIKU_MODEL if cheap else SONNET_MODEL, 4096, 0.3)
     return _SPECS[purpose]
 
 
