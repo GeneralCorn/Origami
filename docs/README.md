@@ -13,6 +13,7 @@ Start with [STATUS.md](STATUS.md). It says where the project actually is, what i
 | [INTEGRATIONS_RESEARCH.md](INTEGRATIONS_RESEARCH.md) | Every candidate data source, with a ship, opt-in, or never verdict and the reason. Section 4 covers the macOS permission model, where a missing declaration fails silently. |
 | [COST_MODEL.md](COST_MODEL.md) | Where the money goes and the four levers against it. Section 3 is the lever list. |
 | [EDITOR_DECISION.md](EDITOR_DECISION.md) | Resolves the CodeMirror 6 question with a measured spike. Read before starting the editor work. |
+| [MODEL_STRATEGY.md](MODEL_STRATEGY.md) | Which call sites can leave the Anthropic API and which cannot, why the saving is smaller than it looks, and the migration order. Read before changing anything about models. |
 
 ## Research
 
