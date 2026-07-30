@@ -30,9 +30,20 @@ function Marks() {
   return (
     <svg viewBox="0 0 340 340" fill="none" aria-hidden="true" className="fold-marks">
       <line x1="30" y1="30" x2="310" y2="310" stroke="#d9d0bb" strokeWidth="1" strokeDasharray="5 7" />
-      <g data-arc opacity="0.7">
-        <path d="M84 132 C 150 70, 230 70, 296 132" stroke="#bc3f1d" strokeWidth="1.25" />
-        <path d="M296 132 l-10.5 -2 m10.5 2 l-3 -10" stroke="#bc3f1d" strokeWidth="1.25" strokeLinecap="round" />
+      {/* The 0.7 stays on each path, exactly as the original artwork had it, so
+          the arc rasterises identically at rest. Group opacity would render both
+          strokes into one buffer and fade it once, which stops them darkening
+          where they overlap at the arrowhead. The group is therefore a plain
+          0..1 multiplier that only the fade writes to. */}
+      <g data-arc>
+        <path d="M84 132 C 150 70, 230 70, 296 132" stroke="#bc3f1d" strokeWidth="1.25" opacity="0.7" />
+        <path
+          d="M296 132 l-10.5 -2 m10.5 2 l-3 -10"
+          stroke="#bc3f1d"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          opacity="0.7"
+        />
       </g>
       <circle cx="170" cy="170" r="2.5" fill="#d9d0bb" />
     </svg>
@@ -109,8 +120,9 @@ export function FoldDiagram({ className }: { className?: string }) {
       cast.style.opacity = (sin * 0.62).toFixed(3);
       back.style.opacity = Math.max(0, -cos * 0.72).toFixed(3);
       // The arc is an instruction about the sheet, not a mark on it, so it is
-      // spent once the fold is under way.
-      arc.style.opacity = (0.7 * Math.max(0, 1 - fold / ARC_FADE)).toFixed(3);
+      // spent once the fold is under way. This is a multiplier over the paths'
+      // own 0.7, so it runs 1 to 0 rather than 0.7 to 0.
+      arc.style.opacity = Math.max(0, 1 - fold / ARC_FADE).toFixed(3);
     };
 
     const schedule = () => {
