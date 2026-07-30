@@ -4,7 +4,11 @@ import { useEffect, useRef } from "react";
 
 const MAX_YAW = 15;
 const MAX_PITCH = 10;
-const MAX_STEP = 10;
+// Degrees of fold per unit of travel across the crease, where one unit is the
+// full width of the plate. At 260 a drag of a little under two thirds folds the
+// sheet completely, and a third of the plate passes the 90 degree mark where
+// settle() commits to the fold rather than returning it to flat.
+const FOLD_GAIN = 260;
 const ARC_FADE = 54;
 // Only touch and pen drags compete with the page scroller, and they lose the
 // plate once they are steeper than this. The cut is 60 degrees rather than 45
@@ -163,15 +167,21 @@ export function FoldDiagram({ className }: { className?: string }) {
         pitch = clamp((0.5 - b) * 2 * MAX_PITCH, MAX_PITCH);
       }
       if (dragging) {
-        // u is the pointer's signed distance from the crease, normalised so the
-        // free corner sits at 1. acos(u) is the fold angle that puts that corner
-        // under the pointer; taken relative to the grab so the sheet does not
-        // teleport to meet a pointer that landed mid-plate.
-        const u = Math.max(-1, Math.min(1, a - b));
-        const target = grabFold + (Math.acos(u) - Math.acos(grabU)) * (180 / Math.PI);
-        // d(theta)/du diverges as |u| approaches 1, so clamp the per-move step.
-        const step = clamp(target - fold, MAX_STEP);
-        fold = Math.max(0, Math.min(180, fold + step));
+        // u is the pointer's signed distance across the crease, which runs
+        // along a - b. The fold tracks how far the pointer has travelled from
+        // where it grabbed, so the sheet does not teleport to meet a pointer
+        // that landed mid-plate.
+        //
+        // This is displacement rather than absolute position on purpose. Taking
+        // acos of the position is geometrically truer, in that it puts the free
+        // corner exactly under the pointer, but it makes the sheet almost
+        // unfoldable: acos compresses the useful range so hard that dragging
+        // clean across the plate turns it only 60 degrees, and settle() returns
+        // anything under 90 to flat. Every natural drag therefore snapped back
+        // and the sheet read as though it only ever pivoted. Gain is set so a
+        // little under two thirds of the plate completes the fold.
+        const u = a - b;
+        fold = Math.max(0, Math.min(180, grabFold - (u - grabU) * FOLD_GAIN));
       }
       schedule();
     };
