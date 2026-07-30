@@ -28,7 +28,10 @@ from services.llm import Budget, ModelResult, Prompt, Purpose, complete
 
 logger = logging.getLogger(__name__)
 
-MAX_RESEARCH_LOOPS = 3
+# Fallback when a route is not in LOOPS_BY_ROUTE. Deliberately the cheapest
+# useful setting: an unrecognised route is a bug, and a bug should not
+# default to the most expensive policy.
+DEFAULT_MAX_LOOPS = 1
 
 # Short greetings and tokens that are always FAST_FACT without an LLM call
 _FAST_FACT_TOKENS = frozenset({
@@ -239,9 +242,13 @@ async def review_node(state: ResearchState) -> ResearchState:
     If not, generate a refined query and loop back.
     """
     t0 = time.perf_counter()
+    # Increment before comparing, so max_loops=N yields N retrieve/analyze
+    # passes and N-1 review calls. The last pass needs no continue-decision,
+    # and spending a Haiku call to ask whether to loop again when no budget
+    # remains would be pure waste. normal_rag therefore never calls review.
     state["loop_count"] += 1
 
-    if state["loop_count"] >= state.get("max_loops", MAX_RESEARCH_LOOPS):
+    if state["loop_count"] >= state.get("max_loops", DEFAULT_MAX_LOOPS):
         state["is_complete"] = True
         logger.info("[LATENCY] review_node: skipped (max loops reached, route=%s)", state.get("route", "?"))
         return state
@@ -582,9 +589,14 @@ async def classify_query(
     """
     q = query.strip().lower()
 
-    # Heuristic: obvious conversational tokens
-    if q in _FAST_FACT_TOKENS or len(q) < 12:
-        logger.info("[ROUTE] heuristic → fast_fact (short/greeting)")
+    # Heuristic: obvious conversational tokens. Matched on the exact token
+    # only. A "len(q) < 12" disjunct used to live here, which sent every
+    # short question ("why NaN?", "fix eq 3?") down the no-retrieval path,
+    # so the user's own documents were never consulted. It also inflated
+    # the apparent fast_fact share, which is the numerator of every saving
+    # this pipeline could claim.
+    if q.rstrip(".!?,").strip() in _FAST_FACT_TOKENS:
+        logger.info("[ROUTE] heuristic → fast_fact (greeting)")
         return "fast_fact"
 
     # Heuristic: explicit deep-research keywords
@@ -701,7 +713,7 @@ async def _prepare_turn(
 
     budget = Budget.interactive()
     route = await classify_query(user_query, history, current_note, budget)
-    max_loops = LOOPS_BY_ROUTE.get(route, 1)
+    max_loops = LOOPS_BY_ROUTE.get(route, DEFAULT_MAX_LOOPS)
     budget.adopt_route(route, max_loops)
 
     return user_query, history, route, max_loops, budget
@@ -780,7 +792,15 @@ async def stream_research_agent(
     t_pipeline = time.perf_counter()
     logger.info("[ROUTE] %s → max_loops=%d, max_calls=%d", route, max_loops, budget.max_calls)
 
-    async for state_update in research_agent.astream(state):
+    # max_loops is enforced in exactly one place, review_node. If that node
+    # ever raises or is bypassed, the graph would loop to LangGraph's
+    # default recursion_limit of 25 instead — roughly eight unbudgeted
+    # analyze passes. Each loop is four nodes (retrieve, analyze,
+    # save_notes, review) plus one final_response superstep, so this is the
+    # route's own shape with one superstep of headroom.
+    config = {"recursion_limit": 4 * max_loops + 2}
+
+    async for state_update in research_agent.astream(state, config=config):
         # Each state_update is a dict of {node_name: updated_state}
         for node_name, node_state in state_update.items():
             if node_name == "__end__":

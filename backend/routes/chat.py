@@ -7,6 +7,8 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
+from langgraph.errors import GraphRecursionError
+
 from services.agent import stream_research_agent
 from services.chroma import resolve_tag
 from services.llm import CallBudgetExceeded, ContextBudgetError
@@ -149,7 +151,7 @@ async def chat(request: ChatRequest):
                     yield _reasoning_block(content, block_id, meta=event.get("meta"))
 
                 t_last_event = t_now
-        except (CallBudgetExceeded, ContextBudgetError) as exc:
+        except (CallBudgetExceeded, ContextBudgetError, GraphRecursionError) as exc:
             # A breach means this code is wrong, not that the user asked for
             # too much, so the log is loud and the user gets a sentence
             # instead of a broken stream.
