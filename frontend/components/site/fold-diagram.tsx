@@ -6,6 +6,12 @@ const MAX_YAW = 15;
 const MAX_PITCH = 10;
 const MAX_STEP = 10;
 const ARC_FADE = 54;
+// Only touch and pen drags compete with the page scroller, and they lose the
+// plate once they are steeper than this. The cut is 60 degrees rather than 45
+// because the gesture the crease implies is the corner-to-corner drag, which on
+// a square plate is exactly 45: a boundary there decides the site's own
+// signature gesture by float rounding of the first sampled move.
+const FOLD_CONE_TAN = Math.tan((60 * Math.PI) / 180);
 
 // The two halves are complementary triangles of the same unmodified artwork.
 // The main diagonal, the instruction arc and the centre register dot are NOT in
@@ -90,18 +96,6 @@ export function FoldDiagram({ className }: { className?: string }) {
     let box = { left: 0, top: 0, size: 0 };
 
     const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value));
-    const label = () => (fold < 45 ? "flat" : fold < 135 ? "half folded" : "folded");
-
-    // Written on release and on keypress only. A live-updating value floods a
-    // screen reader during a drag, so it is deliberately absent from paint().
-    const announce = () => {
-      const value = String(Math.round(fold));
-      if (stage.getAttribute("aria-valuenow") === value) {
-        return;
-      }
-      stage.setAttribute("aria-valuenow", value);
-      stage.setAttribute("aria-valuetext", label());
-    };
 
     const paint = () => {
       frame = 0;
@@ -148,9 +142,8 @@ export function FoldDiagram({ className }: { className?: string }) {
     const armSettle = (duration: number) => {
       window.clearTimeout(settleTimer);
       settleTimer = window.setTimeout(() => {
-        stage.classList.remove("is-settling", "is-keying");
+        stage.classList.remove("is-settling");
         clearHints();
-        announce();
       }, duration);
     };
 
@@ -195,7 +188,6 @@ export function FoldDiagram({ className }: { className?: string }) {
     // A sheet is either flat or creased. There is no stable 47 degrees.
     const settle = () => {
       endGesture();
-      stage.classList.remove("is-keying");
       stage.classList.add("is-settling");
       fold = fold > 90 ? 180 : 0;
       yaw = 0;
@@ -210,7 +202,7 @@ export function FoldDiagram({ className }: { className?: string }) {
       }
       window.clearTimeout(settleTimer);
       measure();
-      stage.classList.remove("is-settling", "is-keying");
+      stage.classList.remove("is-settling");
       sheet.style.willChange = "transform";
       flap.style.willChange = "transform";
       deciding = true;
@@ -226,11 +218,14 @@ export function FoldDiagram({ className }: { className?: string }) {
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
           return;
         }
-        // Capture is withheld until the gesture proves itself horizontal. A
-        // vertical swipe is never captured, so touch-action: pan-y hands it
-        // straight to the page scroller and the page scrolls as normal.
+        // A mouse drag never pans the page, so it is free to fold in any
+        // direction and needs no lock at all. Only touch and pen have to yield.
+        // In practice touch-action: pan-y usually settles that first, at the
+        // compositor: a steep swipe arrives here as pointerdown followed
+        // straight by pointercancel, with no pointermove in between. This is
+        // the backstop for the gestures pan-y does let through.
         deciding = false;
-        if (Math.abs(dx) <= Math.abs(dy)) {
+        if (e.pointerType !== "mouse" && Math.abs(dy) > Math.abs(dx) * FOLD_CONE_TAN) {
           pointerId = -1;
           clearHints();
           return;
@@ -258,7 +253,7 @@ export function FoldDiagram({ className }: { className?: string }) {
         return;
       }
       window.clearTimeout(settleTimer);
-      stage.classList.remove("is-settling", "is-keying");
+      stage.classList.remove("is-settling");
       measure();
     };
 
@@ -285,36 +280,6 @@ export function FoldDiagram({ className }: { className?: string }) {
       settle();
     };
 
-    // A keypress is a discrete command, not a manipulation, so it runs on a
-    // transition proportional to its travel rather than through the drag path.
-    const onKey = (e: KeyboardEvent) => {
-      const step = e.shiftKey ? 30 : 10;
-      let next = fold;
-      let jump = false;
-      if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-        next = fold + step;
-      } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-        next = fold - step;
-      } else if (e.key === "Home") {
-        next = 0;
-        jump = true;
-      } else if (e.key === "End") {
-        next = 180;
-        jump = true;
-      } else {
-        return;
-      }
-      e.preventDefault();
-      stage.classList.remove("is-settling", "is-keying");
-      stage.classList.add(jump ? "is-settling" : "is-keying");
-      fold = Math.max(0, Math.min(180, next));
-      yaw = 0;
-      pitch = 0;
-      schedule();
-      announce();
-      armSettle(jump ? 660 : 260);
-    };
-
     // A drag left running in a tab that goes away comes back frozen mid-fold,
     // so the tab losing focus ends the gesture at a rest state.
     const onHide = () => {
@@ -323,14 +288,14 @@ export function FoldDiagram({ className }: { className?: string }) {
       }
     };
 
+    // Deliberately not focusable and carrying no widget role. The plate folds
+    // nothing but itself, so a keyboard user gained a tab stop and a
+    // "half folded" announcement that told them nothing, and paid for it with
+    // arrow, Home and End keys that the handler had to preventDefault, which
+    // cost them scrolling and jump-to-top while focus sat on an illustration.
+    // Direct manipulation is the whole point of the figure, so it stays a
+    // pointer enhancement over artwork that is already complete without it.
     stage.classList.add("is-live");
-    stage.setAttribute("role", "slider");
-    stage.setAttribute("tabindex", "0");
-    stage.setAttribute("aria-label", "Fold the paper along its diagonal crease");
-    stage.setAttribute("aria-orientation", "horizontal");
-    stage.setAttribute("aria-valuemin", "0");
-    stage.setAttribute("aria-valuemax", "180");
-    announce();
     if (hint) {
       hint.textContent = " · drag to fold";
     }
@@ -341,7 +306,6 @@ export function FoldDiagram({ className }: { className?: string }) {
     stage.addEventListener("pointerleave", onLeave);
     stage.addEventListener("pointerup", onUp);
     stage.addEventListener("pointercancel", onUp);
-    stage.addEventListener("keydown", onKey);
     document.addEventListener("visibilitychange", onHide);
 
     return () => {
@@ -353,14 +317,13 @@ export function FoldDiagram({ className }: { className?: string }) {
       stage.removeEventListener("pointerleave", onLeave);
       stage.removeEventListener("pointerup", onUp);
       stage.removeEventListener("pointercancel", onUp);
-      stage.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onHide);
     };
   }, []);
 
   return (
     <div className={className}>
-      <div ref={stageRef} className="fold-stage">
+      <div ref={stageRef} className="fold-stage" aria-hidden="true">
         <div data-sheet className="fold-sheet">
           <div className="fold-half fold-fixed">
             <Plate />
@@ -376,7 +339,7 @@ export function FoldDiagram({ className }: { className?: string }) {
       </div>
       <p className="mt-3 text-center font-mono text-[11px] tracking-[0.14em] text-subtle">
         fig. 1 &middot; preliminary base
-        <span data-hint />
+        <span data-hint aria-hidden="true" />
       </p>
     </div>
   );

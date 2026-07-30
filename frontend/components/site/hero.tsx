@@ -46,7 +46,7 @@ export function Hero() {
               {/* Capped at 2px. An arrow is a deictic mark, so pointing further
                   is meaningful; at 4px it becomes a bounce. The buttons
                   themselves change colour only. */}
-              <ArrowDownIcon className="h-3.5 w-3.5 text-subtle transition-transform duration-[180ms] [transition-timing-function:var(--ease-hover)] group-hover:translate-y-0.5" />
+              <ArrowDownIcon className="h-3.5 w-3.5 text-subtle transition-transform duration-[180ms] [transition-timing-function:var(--ease-hover)] group-hover:translate-y-0.5 motion-reduce:transition-none" />
             </a>
           </div>
           <p style={stagger(4)} className="rise mt-7 font-mono text-xs tracking-wide text-subtle">

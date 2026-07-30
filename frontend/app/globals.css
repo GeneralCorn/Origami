@@ -402,31 +402,13 @@
     transition: opacity 0.62s var(--ease-settle);
   }
 
-  /* An arrow-key step travels 10 or 30 degrees, so it gets a duration
-     proportional to that travel. Home and End travel 180 and use the settle. */
-  .fold-stage.is-keying .fold-flap {
-    transition: transform 0.22s var(--ease-crease);
-  }
-
-  .fold-stage.is-keying .fold-cast,
-  .fold-stage.is-keying .fold-shade,
-  .fold-stage.is-keying .fold-back,
-  .fold-stage.is-keying [data-arc] {
-    transition: opacity 0.22s var(--ease-crease);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .fold-stage.is-settling .fold-sheet,
     .fold-stage.is-settling .fold-flap,
     .fold-stage.is-settling .fold-cast,
     .fold-stage.is-settling .fold-shade,
     .fold-stage.is-settling .fold-back,
-    .fold-stage.is-settling [data-arc],
-    .fold-stage.is-keying .fold-flap,
-    .fold-stage.is-keying .fold-cast,
-    .fold-stage.is-keying .fold-shade,
-    .fold-stage.is-keying .fold-back,
-    .fold-stage.is-keying [data-arc] {
+    .fold-stage.is-settling [data-arc] {
       transition-duration: 1ms;
     }
   }
