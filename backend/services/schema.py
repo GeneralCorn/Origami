@@ -93,6 +93,21 @@ def provenance_for_screenshot() -> Provenance:
     return Provenance(origin="unknown", trust="untrusted", channel="screenshot")
 
 
+def provenance_for_snippet() -> Provenance:
+    """Text the user captured from somewhere else.
+
+    Section 3 reads "content Origami did not receive from the user
+    directly is untrusted", and its own gloss settles what "directly"
+    means: "the text inside a PDF someone emailed" is untrusted even
+    though the user handed the PDF over. The test is authorship, not
+    delivery, because the rule "is a statement about whether the bytes
+    could contain instructions aimed at the agent". Pasted bytes can.
+    Typing is the only act section 3 calls trusted, and pasting into
+    Origami's own textarea is not typing.
+    """
+    return Provenance(origin="unknown", trust="untrusted", channel="snippet")
+
+
 def data_relative(path: Path) -> str:
     """raw_ref as a DATA_DIR-relative POSIX path.
 

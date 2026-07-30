@@ -24,6 +24,7 @@ UPLOADS_DIR: Path = DATA_DIR / "uploads"
 PDFS_DIR: Path = DATA_DIR / "pdfs"
 CHATS_DIR: Path = DATA_DIR / "chats"
 NOTES_DIR: Path = DATA_DIR / "notes"
+SNIPPETS_DIR: Path = DATA_DIR / "snippets"
 CHROMA_DIR: Path = Path(os.getenv("CHROMA_DIR", str(DATA_DIR / "chroma_data")))
 MODELS_DIR: Path = DATA_DIR / "models"
 USAGE_DIR: Path = DATA_DIR / "usage"
@@ -31,7 +32,7 @@ SAVED_TAGS_FILE: Path = DATA_DIR / "saved_tags.json"
 
 for _dir in (
     SCREENSHOTS_DIR, DIGESTS_DIR, UPLOADS_DIR, PDFS_DIR,
-    CHATS_DIR, NOTES_DIR, CHROMA_DIR, MODELS_DIR, USAGE_DIR,
+    CHATS_DIR, NOTES_DIR, SNIPPETS_DIR, CHROMA_DIR, MODELS_DIR, USAGE_DIR,
 ):
     _dir.mkdir(parents=True, exist_ok=True)
 

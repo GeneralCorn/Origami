@@ -8,6 +8,15 @@ export interface UploadResponse {
   duplicate?: boolean;
 }
 
+export interface SnippetResponse {
+  id: string;
+  title?: string;
+  total_chunks?: number;
+  tags?: string[];
+  status: string;
+  duplicate?: boolean;
+}
+
 export interface PersistedPDF {
   name: string;
   filename: string;

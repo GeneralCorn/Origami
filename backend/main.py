@@ -33,6 +33,7 @@ from routes.documents import router as documents_router
 from routes.notes import router as notes_router
 from routes.upload import router as upload_router
 from routes.screenshots import router as screenshots_router
+from routes.snippets import router as snippets_router
 from routes.usage import router as usage_router
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,7 @@ app.include_router(documents_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(screenshots_router, prefix="/api")
+app.include_router(snippets_router, prefix="/api")
 app.include_router(usage_router, prefix="/api")
 
 
