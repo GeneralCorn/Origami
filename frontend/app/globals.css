@@ -163,6 +163,43 @@
   summary::-webkit-details-marker {
     display: none;
   }
+
+  /* Height is a layout property, so animating it from JavaScript reflows the
+     answer text mid-transition, which is conspicuous on Newsreader at 1.6 line
+     height. interpolate-size does it in the engine instead. Where either half is
+     unsupported the guard fails and the details opens instantly, which is
+     exactly today's behaviour, so it costs nothing. The 60ms opacity lag means
+     the space exists before the text inks into it. No name attribute: closing
+     someone's open answer is a small theft of control, and on an FAQ people
+     legitimately compare answers. */
+  @supports (interpolate-size: allow-keywords) and (selector(::details-content)) {
+    details {
+      interpolate-size: allow-keywords;
+    }
+
+    details::details-content {
+      block-size: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition:
+        block-size 0.26s var(--ease-hover),
+        content-visibility 0.26s var(--ease-hover) allow-discrete,
+        opacity 0.2s var(--ease-hover) 0.06s;
+    }
+
+    details[open]::details-content {
+      block-size: auto;
+      opacity: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      details::details-content,
+      details[open]::details-content {
+        transition: none;
+        opacity: 1;
+      }
+    }
+  }
 }
 
 @layer components {
@@ -187,5 +224,33 @@
   .crease-h {
     background-image: linear-gradient(to right, transparent, var(--color-line-strong) 18%, var(--color-line-strong) 82%, transparent);
     height: 1px;
+  }
+
+  /* A rule in print is drawn, not faded up out of nothing. background-size
+     causes no layout and does not repaint the glyphs. text-decoration-thickness
+     is animatable but resolves inconsistently and shifts the baseline in Safari.
+     This rule owns the colour transition too, so the elements carrying it must
+     not also carry Tailwind's transition-colors: that utility sits in a later
+     cascade layer, and it would win and drop background-size from the
+     transition property list, silently leaving the rule undrawn. */
+  .link-rule {
+    background-image: linear-gradient(to right, currentColor, currentColor);
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    background-size: 0% 1px;
+    transition:
+      background-size 0.18s var(--ease-hover),
+      color 0.12s var(--ease-hover);
+  }
+
+  .link-rule:hover,
+  .link-rule:focus-visible {
+    background-size: 100% 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .link-rule {
+      transition: color 0.12s var(--ease-hover);
+    }
   }
 }

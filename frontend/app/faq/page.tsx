@@ -164,7 +164,7 @@ export default function FaqPage() {
                     viewBox="0 0 16 16"
                     fill="none"
                     aria-hidden="true"
-                    className="h-4 w-4 shrink-0 text-subtle transition-transform duration-300 group-open:rotate-45"
+                    className="h-4 w-4 shrink-0 text-subtle transition-transform duration-[220ms] [transition-timing-function:var(--ease-crease)] group-open:rotate-45"
                   >
                     <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>

@@ -16,23 +16,23 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-5 sm:gap-7">
           <Link
             href="/#capabilities"
-            className="hidden text-sm text-muted transition-colors hover:text-ink md:block"
+            className="link-rule hidden text-sm text-muted hover:text-ink md:block"
           >
             Capabilities
           </Link>
           <Link
             href="/#roadmap"
-            className="hidden text-sm text-muted transition-colors hover:text-ink md:block"
+            className="link-rule hidden text-sm text-muted hover:text-ink md:block"
           >
             Roadmap
           </Link>
           <Link
             href="/#install"
-            className="hidden text-sm text-muted transition-colors hover:text-ink md:block"
+            className="link-rule hidden text-sm text-muted hover:text-ink md:block"
           >
             Install
           </Link>
-          <Link href="/faq" className="text-sm text-muted transition-colors hover:text-ink">
+          <Link href="/faq" className="link-rule text-sm text-muted hover:text-ink">
             FAQ
           </Link>
           <a

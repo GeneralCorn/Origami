@@ -2,7 +2,7 @@ import Link from "next/link";
 import { FoldMark } from "@/components/site/logo";
 import { docsUrl, licenseUrl, repoUrl, roadmapUrl } from "@/lib/site";
 
-const linkClass = "text-sm text-muted transition-colors hover:text-ink";
+const linkClass = "link-rule text-sm text-muted hover:text-ink";
 
 export function SiteFooter() {
   return (
