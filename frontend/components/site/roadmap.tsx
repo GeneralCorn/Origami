@@ -61,8 +61,9 @@ export function Roadmap() {
         {/* The spine is a crease, drawn with the same dashed line as the fold
             diagram in the hero, running the length of the timeline. */}
         <div className="relative mt-20 pl-9 sm:pl-16">
-          <span
-            aria-hidden="true"
+          <Reveal
+            variant="crease"
+            decorative
             className="absolute top-4 bottom-4 left-[5px] w-px border-l border-dashed border-line-strong sm:left-[7px]"
           />
 

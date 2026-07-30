@@ -6,12 +6,18 @@ export function Reveal({
   children,
   className,
   delay = 0,
+  variant = "fade",
+  decorative = false,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   delay?: number;
+  variant?: "fade" | "crease";
+  decorative?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const armed = variant === "crease" ? "crease-armed" : "reveal-armed";
+  const shown = variant === "crease" ? "crease-in" : "reveal-in";
 
   useEffect(() => {
     const el = ref.current;
@@ -32,12 +38,12 @@ export function Reveal({
         return;
       }
       el.style.transitionDelay = delay ? `${delay}s` : "";
-      el.classList.add("reveal-armed");
+      el.classList.add(armed);
       observer = new IntersectionObserver(
         (entries) => {
           for (const entry of entries) {
             if (entry.isIntersecting) {
-              el.classList.add("reveal-in");
+              el.classList.add(shown);
               observer?.disconnect();
             }
           }
@@ -67,10 +73,10 @@ export function Reveal({
 
     arm();
     return () => observer?.disconnect();
-  }, [delay]);
+  }, [delay, armed, shown]);
 
   return (
-    <div ref={ref} className={className}>
+    <div ref={ref} className={className} aria-hidden={decorative || undefined}>
       {children}
     </div>
   );

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fragment_Mono, Instrument_Sans, Newsreader } from "next/font/google";
 import { SiteHeader } from "@/components/site/site-header";
 import { SiteFooter } from "@/components/site/site-footer";
+import { ScrollChrome } from "@/components/site/scroll-chrome";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -46,6 +47,10 @@ export default function RootLayout({
       className={`${newsreader.variable} ${instrumentSans.variable} ${fragmentMono.variable}`}
     >
       <body className="grain">
+        {/* 64px is exactly the header's own height, so the threshold is the
+            moment the first pixel of content passes under the bar. */}
+        <div data-top-sentinel aria-hidden="true" className="absolute top-16 h-px w-px" />
+        <ScrollChrome />
         <SiteHeader />
         {children}
         <SiteFooter />

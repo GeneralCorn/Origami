@@ -34,6 +34,17 @@
   --ease-crease: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
+/* Outside every layer, because @property cannot be nested in one. initial-value
+   is 100%: the un-enhanced spine is fully drawn, and the animation only ever
+   starts from a lower value after the client has armed it. Where @property is
+   unsupported, var(--draw) is invalid at computed-value time, mask-image
+   resolves to none, and the spine is fully drawn. */
+@property --draw {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+
 @theme inline {
   --font-sans: var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
@@ -139,6 +150,31 @@
 
     .tip.reveal-armed [data-plate] {
       box-shadow: var(--shadow-frame);
+    }
+  }
+
+  /* 1100ms because a bone folder run down a long fold is a one-second physical
+     gesture, and --ease-crease rather than --ease-settle because a crease scored
+     with an ease-out looks like the tool ran out of steam. Masking the existing
+     border keeps the designed dash rhythm untouched and adds no element: a CSS
+     border cannot be drawn progressively, and converting to SVG fails because
+     stroke-dasharray is already spent producing the dashes. */
+  .crease-armed {
+    mask-image: linear-gradient(to bottom, #000 0 var(--draw), transparent var(--draw));
+    --draw: 0%;
+  }
+
+  .crease-armed.crease-in {
+    --draw: 100%;
+    transition: --draw 1.1s var(--ease-crease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .crease-armed,
+    .crease-armed.crease-in {
+      mask-image: none;
+      --draw: 100%;
+      transition: none;
     }
   }
 
@@ -394,4 +430,34 @@
       transition-duration: 1ms;
     }
   }
+}
+
+/* Unlayered on purpose, and the only rules on this site that are. Tailwind emits
+   its utilities into the last cascade layer, and layer order beats selector
+   specificity outright, so nothing written inside @layer base or
+   @layer components can override the header's own border-line, bg-paper/85 and
+   backdrop-blur-md utilities no matter how the selector is built. Unlayered
+   declarations sit above every layer, which is the only mechanism that works.
+
+   The height never changes, the logo never shrinks and the nav never reflows. A
+   header that compresses on scroll is a 2016 gesture and makes content jump
+   under it. This removes chrome and nothing else. */
+html[data-at-top] header {
+  border-bottom-color: transparent;
+  background-color: transparent;
+  backdrop-filter: none;
+}
+
+html.chrome-ready header {
+  transition:
+    border-color 0.28s var(--ease-hover),
+    background-color 0.28s var(--ease-hover),
+    backdrop-filter 0.28s var(--ease-hover);
+}
+
+html.chrome-ready[data-at-top] header {
+  transition:
+    border-color 0.2s var(--ease-exit),
+    background-color 0.2s var(--ease-exit),
+    backdrop-filter 0.2s var(--ease-exit);
 }
