@@ -66,8 +66,11 @@ export function Roadmap() {
             className="absolute top-4 bottom-4 left-[5px] w-px border-l border-dashed border-line-strong sm:left-[7px]"
           />
 
+          {/* No stagger on the stations. A stagger only reads when the staggered
+              items are co-visible, and these are hundreds of pixels apart, each
+              armed by its own observer, so the delay was never perceived. */}
           {stations.map((station, index) => (
-            <Reveal key={station.group} delay={0.04 * index}>
+            <Reveal key={station.group}>
               <div className={index === 0 ? "relative" : "relative mt-16"}>
                 <span
                   aria-hidden="true"
@@ -103,7 +106,7 @@ export function Roadmap() {
 
           {/* Terminus. Hollow, because this is where the line stops rather than
               another thing being planned. */}
-          <Reveal delay={0.16}>
+          <Reveal>
             <div className="relative mt-16">
               <span
                 aria-hidden="true"

@@ -89,6 +89,37 @@
       transform 0.64s var(--ease-settle);
   }
 
+  /* A tipped-in plate: separately printed and pasted onto the page. It does not
+     move relative to its page, which is why the parallax it replaces was wrong.
+     0.35deg across a 1000px element is about 6px of corner travel, felt rather
+     than seen, and the top edge as hinge is the gesture of laying a plate down.
+     It ends at exactly transform: none because a rotated raster is resampled and
+     reads soft. The plate's resting shadow lives here rather than on a
+     shadow-frame utility in the markup: Tailwind puts utilities in a cascade
+     layer that outranks this one no matter how the selector is written, so a
+     utility on the element could never be overridden by the armed state. */
+  .tip [data-plate] {
+    box-shadow: var(--shadow-frame);
+  }
+
+  .tip.reveal-armed {
+    transform: translateY(28px) rotate(0.35deg);
+    transform-origin: 50% 0;
+  }
+
+  .tip.reveal-armed.reveal-in {
+    transform: none;
+  }
+
+  .tip.reveal-armed [data-plate] {
+    box-shadow: var(--shadow-card);
+  }
+
+  .tip.reveal-armed.reveal-in [data-plate] {
+    box-shadow: var(--shadow-frame);
+    transition: box-shadow 0.64s var(--ease-settle);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .rise {
       animation: none;
@@ -99,6 +130,15 @@
       opacity: 1;
       transform: none;
       transition: none;
+    }
+
+    .tip.reveal-armed,
+    .tip.reveal-armed.reveal-in {
+      transform: none;
+    }
+
+    .tip.reveal-armed [data-plate] {
+      box-shadow: var(--shadow-frame);
     }
   }
 
