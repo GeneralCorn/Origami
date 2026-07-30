@@ -253,4 +253,145 @@
       transition: color 0.12s var(--ease-hover);
     }
   }
+
+  /* Every transform here rests at identity and the two clips are complementary
+     halves of one square, so the served markup already draws the finished flat
+     plate. Script only ever writes transforms on top of a picture that is
+     already correct. The projection is deliberately very long rather than
+     photographic: this is a plate in a manual, not a photograph of paper, and at
+     2400px the fold stays inside its box across the full sweep so the hero's
+     overflow-hidden can never clip it. */
+  .fold-stage {
+    position: relative;
+    perspective: 2400px;
+    touch-action: pan-y;
+  }
+
+  .fold-stage.is-live {
+    cursor: grab;
+  }
+
+  .fold-stage.is-live:active {
+    cursor: grabbing;
+  }
+
+  /* NOTHING may be added to this element that creates a grouping context.
+     opacity below 1, filter, clip-path, mask, mix-blend-mode, isolation,
+     contain: paint, overflow other than visible, and will-change naming any of
+     them all force transform-style to a USED value of flat, and
+     getComputedStyle still reports "preserve-3d" while they do it. This is the
+     one element in the tree where that matters. */
+  .fold-sheet {
+    position: relative;
+    transform-style: preserve-3d;
+  }
+
+  .fold-half > svg {
+    display: block;
+  }
+
+  /* The crease runs corner to corner, so the rotation axis is the vector along
+     it, (1, 1, 0) because +y is down in CSS, and the origin is any point on the
+     line, which is why 50% 50% is exact rather than an approximation. Clip-path
+     on the flap itself is safe because the flap needs its PARENT's preserve-3d,
+     not its own. */
+  .fold-fixed {
+    clip-path: polygon(0 0, 0 100%, 100% 100%);
+  }
+
+  .fold-flap {
+    position: absolute;
+    inset: 0;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+    transform-origin: 50% 50%;
+  }
+
+  .fold-marks {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  /* The artwork insets the paper by 30 of its 340 viewBox units, so the shading
+     is inset to match. Covering the whole box lets the gradient bleed past the
+     sheet's own edge, which reads as fog rather than as paper. The paint lives
+     in the same rule as the opacity, so a stylesheet that fails to load yields
+     no overlay rather than a solid block. */
+  .fold-cast,
+  .fold-shade,
+  .fold-back {
+    position: absolute;
+    inset: 8.8235%;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Past 90 degrees the flap presents its reverse, which CSS renders as the
+     artwork mirrored. Real paper shows only a ghost of what is on the other
+     side, so the reverse is washed toward the stock colour and the creases read
+     as show-through rather than as a printing error. */
+  .fold-back {
+    background-color: #fdfcf8;
+  }
+
+  /* Both gradient axes run corner to corner PERPENDICULAR to the crease, so the
+     crease sits at their 50% mark and the half before it lies in the other
+     triangle, which the clip removes. Stops therefore have to be placed from 50%
+     outward or the paint lands entirely in the clipped region: the cast shadow
+     with stops at 0% and 38% rendered nothing at all at any fold angle. The
+     shadow is deepest along the fold line and fades toward the far corner; the
+     flap's own shading now spans the flap instead of wasting half its range. */
+  .fold-cast {
+    background-image: linear-gradient(to bottom left, rgba(33, 28, 22, 0.5) 50%, rgba(33, 28, 22, 0) 76%);
+  }
+
+  .fold-shade {
+    background-image: linear-gradient(to top right, rgba(33, 28, 22, 0.03) 50%, rgba(33, 28, 22, 0.17));
+  }
+
+  /* The settle is a transition, not a loop. It runs entirely on the compositor
+     with zero application JavaScript frames, so there is no render loop that
+     could fail to stop. Both control points are inside the unit square, so
+     there is no overshoot to suppress under reduced motion. */
+  .fold-stage.is-settling .fold-sheet,
+  .fold-stage.is-settling .fold-flap {
+    transition: transform 0.62s var(--ease-settle);
+  }
+
+  .fold-stage.is-settling .fold-cast,
+  .fold-stage.is-settling .fold-shade,
+  .fold-stage.is-settling .fold-back,
+  .fold-stage.is-settling [data-arc] {
+    transition: opacity 0.62s var(--ease-settle);
+  }
+
+  /* An arrow-key step travels 10 or 30 degrees, so it gets a duration
+     proportional to that travel. Home and End travel 180 and use the settle. */
+  .fold-stage.is-keying .fold-flap {
+    transition: transform 0.22s var(--ease-crease);
+  }
+
+  .fold-stage.is-keying .fold-cast,
+  .fold-stage.is-keying .fold-shade,
+  .fold-stage.is-keying .fold-back,
+  .fold-stage.is-keying [data-arc] {
+    transition: opacity 0.22s var(--ease-crease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fold-stage.is-settling .fold-sheet,
+    .fold-stage.is-settling .fold-flap,
+    .fold-stage.is-settling .fold-cast,
+    .fold-stage.is-settling .fold-shade,
+    .fold-stage.is-settling .fold-back,
+    .fold-stage.is-settling [data-arc],
+    .fold-stage.is-keying .fold-flap,
+    .fold-stage.is-keying .fold-cast,
+    .fold-stage.is-keying .fold-shade,
+    .fold-stage.is-keying .fold-back,
+    .fold-stage.is-keying [data-arc] {
+      transition-duration: 1ms;
+    }
+  }
 }
