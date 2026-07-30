@@ -9,6 +9,8 @@ from chromadb import Documents, EmbeddingFunction, Embeddings
 
 from config import EMBEDDING_MODEL, MODELS_DIR
 
+EMBEDDING_BACKEND = "fastembed"
+
 EMBEDDING_MODELS = {
     "bge-small-en-v1.5": {
         "model_name": "BAAI/bge-small-en-v1.5",
@@ -50,3 +52,14 @@ def get_embedding_function(model_key: str | None = None) -> FastembedEmbeddingFu
     key = model_key or EMBEDDING_MODEL
     cfg = EMBEDDING_MODELS[key]
     return FastembedEmbeddingFunction(model_name=cfg["model_name"])
+
+
+def current_embedding_model_id(model_key: str | None = None) -> str:
+    """Identifier recorded on every segment this process embeds.
+
+    The backend prefix is load-bearing: fastembed ships quantized ONNX, so
+    its vectors are not interchangeable with the sentence-transformers
+    build of the same checkpoint (ARCHITECTURE_V2 section 5).
+    """
+    key = model_key or EMBEDDING_MODEL
+    return f"{EMBEDDING_BACKEND}:{EMBEDDING_MODELS[key]['model_name']}"

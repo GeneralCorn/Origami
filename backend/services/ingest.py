@@ -12,7 +12,7 @@ import asyncio
 import bisect
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import pymupdf
@@ -22,6 +22,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from prompts import CONTEXTUALIZER_PROMPT
 from services.chroma import get_collection
 from config import ANTHROPIC_API_KEY, HAIKU_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
+from services.embeddings import current_embedding_model_id
+from services.schema import Item, Segment, segment_id, segment_metadata
 from services.text_utils import strip_think_tags
 
 logger = logging.getLogger(__name__)
@@ -190,12 +192,8 @@ def generate_title_from_pdf(pdf_path: Path) -> str:
 
 async def ingest_pdf(
     pdf_path: Path,
-    file_id: str,
-    filename: str,
+    item: Item,
     tags: list[str] | None = None,
-    content_hash: str | None = None,
-    title: str = "",
-    publish_date: str | None = None,
 ) -> int:
     """
     Full contextual retrieval ingestion pipeline for a single PDF.
@@ -206,9 +204,14 @@ async def ingest_pdf(
     4. Prepend context to chunk
     5. Store contextualized chunks in ChromaDB with metadata
 
+    Takes an Item rather than loose PDF-shaped scalars: the adapter that
+    knows where the bytes came from is the only thing that can state their
+    provenance, and Item cannot be constructed without it.
+
     Returns the number of chunks ingested.
     """
-    logger.info(f"Ingesting PDF: {filename} (id={file_id})")
+    filename = Path(item.raw_ref).name
+    logger.info(f"Ingesting PDF: {filename} (id={item.id})")
 
     # Step 1: Extract text with page boundaries
     full_text, page_offsets = extract_text_from_pdf(pdf_path)
@@ -236,6 +239,7 @@ async def ingest_pdf(
     collection = get_collection()
     llm = ChatAnthropic(model=CONTEXT_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=100)
     chunk_tags = tags or []
+    embedding_model = current_embedding_model_id()
     ingested = 0
 
     # Semaphore limits concurrent API requests
@@ -247,30 +251,43 @@ async def ingest_pdf(
             try:
                 context = await contextualize_chunk(llm, full_text, chunk)
                 contextualized = f"{context}\n\n{chunk}"
+                context_status = "ok"
             except Exception as e:
                 logger.warning(f"Contextualization failed for chunk {i+1}: {e}")
                 contextualized = chunk
+                context_status = "failed"
 
             # Compute page range for this chunk
             c_start, c_end = chunk_positions[i]
             p_start, p_end = _page_range(c_start, c_end, page_offsets)
 
+            # content_source describes Segment.content, which is the text
+            # that gets embedded. When contextualization succeeds that text
+            # opens with a Haiku-written blurb, so it is partly generated
+            # and saying "extracted" would be false. The chunk verbatim
+            # stays in original_chunk and is what services.rag returns as
+            # the citable text.
+            segment = Segment(
+                ordinal=i,
+                modality="text",
+                content=contextualized,
+                content_source="extracted" if context_status == "failed" else "generated",
+                embedding_model=embedding_model,
+                context_status=context_status,
+                span={"page_start": p_start, "page_end": p_end},
+            )
+
             # Insert immediately so frontend progress bar updates in real time
             collection.add(
-                ids=[f"{file_id}-{i}"],
-                documents=[contextualized],
-                metadatas=[{
-                    "file_id": file_id,
+                ids=[segment_id(item.id, i)],
+                documents=[segment.content],
+                metadatas=[segment_metadata(item, segment, extra={
                     "filename": filename,
-                    "title": title or filename,
-                    "chunk_index": i,
                     "original_chunk": chunk,
                     "tags": chunk_tags,
-                    "content_hash": content_hash or "",
-                    "publish_date": publish_date or "",
-                    "page_start": p_start,
-                    "page_end": p_end,
-                }],
+                    "content_hash": item.source_id,
+                    "publish_date": item.created_at,
+                })],
             )
             ingested += 1
             logger.info(f"Ingested chunk {ingested}/{len(chunks)} for {filename}")

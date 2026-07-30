@@ -10,7 +10,8 @@ from starlette.responses import FileResponse
 
 from config import UPLOADS_DIR, PDFS_DIR
 from services.ingest import ingest_pdf, generate_title_from_pdf, extract_text_from_pdf, extract_publish_date, text_splitter
-from services.chroma import hash_bytes, find_by_hash, list_all_tags, save_tag, delete_chunks, get_collection
+from services.chroma import hash_bytes, find_by_hash, list_all_tags, save_tag, get_collection
+from services.schema import Item, data_relative, provenance_for_upload
 from services.text_utils import sanitize_filename
 
 router = APIRouter()
@@ -34,14 +35,20 @@ async def _process_pdf(
     """Background task: run the contextual retrieval ingestion pipeline."""
     try:
         publish_date = extract_publish_date(file_path)
-        count = await ingest_pdf(
-            file_path, file_id, filename,
-            tags=tags, content_hash=content_hash, title=title,
-            publish_date=publish_date,
+        item = Item(
+            id=file_id,
+            source_type="pdf",
+            source_id=content_hash,
+            title=title or filename,
+            created_at=publish_date or "",
+            ingested_at=datetime.now(timezone.utc).isoformat(),
+            provenance=provenance_for_upload(),
+            raw_ref=data_relative(file_path),
         )
+        count = await ingest_pdf(file_path, item, tags=tags)
         logger.info(f"Finished ingesting {filename}: {count} chunks (publish_date={publish_date})")
     except Exception as e:
-        logger.error(f"Ingestion failed for {filename}: {e}")
+        logger.exception(f"Ingestion failed for {filename}: {e}")
 
 
 @router.post("/upload")
