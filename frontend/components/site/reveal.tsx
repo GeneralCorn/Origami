@@ -1,9 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
-
-const ease = [0.22, 0.55, 0.24, 1] as const;
+import { useEffect, useRef, type ReactNode } from "react";
 
 export function Reveal({
   children,
@@ -14,16 +11,67 @@ export function Reveal({
   className?: string;
   delay?: number;
 }) {
-  const reduced = useReducedMotion();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    let observer: IntersectionObserver | null = null;
+
+    const arm = () => {
+      // Anything already on screen is left alone. Arming it would hide content
+      // the visitor is looking at and then fade it back in, and the reveal is
+      // only worth having for what scrolls into view later.
+      if (el.getBoundingClientRect().top < window.innerHeight) {
+        return;
+      }
+      el.style.transitionDelay = delay ? `${delay}s` : "";
+      el.classList.add("reveal-armed");
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              el.classList.add("reveal-in");
+              observer?.disconnect();
+            }
+          }
+        },
+        { rootMargin: "0px 0px -80px 0px" },
+      );
+      observer.observe(el);
+    };
+
+    // A hidden tab suspends rendering, so the observer cannot compute an
+    // intersection and anything armed here would stay hidden until the visitor
+    // scrolled it. Links routinely open in a background tab, so wait for the
+    // tab to be looked at before hiding anything.
+    if (document.visibilityState === "hidden") {
+      const onVisible = () => {
+        if (document.visibilityState === "visible") {
+          document.removeEventListener("visibilitychange", onVisible);
+          arm();
+        }
+      };
+      document.addEventListener("visibilitychange", onVisible);
+      return () => {
+        document.removeEventListener("visibilitychange", onVisible);
+        observer?.disconnect();
+      };
+    }
+
+    arm();
+    return () => observer?.disconnect();
+  }, [delay]);
+
   return (
-    <motion.div
-      className={className}
-      initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "0px 0px -80px 0px" }}
-      transition={reduced ? { duration: 0 } : { duration: 0.75, delay, ease }}
-    >
+    <div ref={ref} className={className}>
       {children}
-    </motion.div>
+    </div>
   );
 }

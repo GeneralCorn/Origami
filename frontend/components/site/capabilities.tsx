@@ -22,7 +22,7 @@ const capabilities = [
   {
     number: "04",
     title: "An index on your own disk",
-    body: "Chunks are embedded by a model running on your machine and stored in a local Chroma index. Building and searching that index needs no network at all.",
+    body: "Chunks are embedded by a model running on your machine and stored in a local Chroma index. The embedding model downloads once on first run, and after that building and searching the index needs no network.",
     className: "",
   },
 ];

@@ -38,6 +38,53 @@
     }
   }
 
+  /* Motion is a progressive enhancement and never gates visibility. The
+     server renders every element visible; the entrance runs from CSS with
+     no script at all, and the scroll reveal only hides an element after the
+     client has armed it, which it does solely for elements off screen. A
+     failed bundle or a throttled tab therefore shows the page rather than a
+     blank one. */
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(26px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .rise {
+    animation: rise 0.8s cubic-bezier(0.22, 0.55, 0.24, 1) both;
+  }
+
+  .reveal-armed {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  .reveal-armed.reveal-in {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.75s cubic-bezier(0.22, 0.55, 0.24, 1),
+      transform 0.75s cubic-bezier(0.22, 0.55, 0.24, 1);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rise {
+      animation: none;
+    }
+
+    .reveal-armed,
+    .reveal-armed.reveal-in {
+      opacity: 1;
+      transform: none;
+      transition: none;
+    }
+  }
+
   body {
     background-color: var(--color-paper);
     color: var(--color-ink);
