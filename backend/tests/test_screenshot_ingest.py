@@ -5,11 +5,11 @@ Pure functions on purpose: no Chroma, no Ollama, no key, no network.
 
 import hashlib
 
-from config import SCREENSHOTS_DIR
+from config import CHUNK_SIZE, SCREENSHOTS_DIR
 from services.screenshot_ingest import (
     CAPTION_ORDINAL,
     DEFAULT_TITLE,
-    OCR_ORDINAL,
+    FIRST_OCR_ORDINAL,
     screenshot_drafts,
     screenshot_item,
 )
@@ -37,7 +37,9 @@ def test_item_carries_source_identity():
     item = screenshot_item(path, _FULL_RESULT)
 
     assert item.source_type == "screenshot"
-    assert item.id == path.stem
+    # The full name, not the stem: two files differing only by extension
+    # would otherwise share an id and overwrite each other's segments.
+    assert item.id == path.name
     assert item.source_id == hashlib.sha256(_IMAGE_BYTES).hexdigest()
     assert item.title == _FULL_RESULT["title"]
     assert item.raw_ref == f"screenshots/{path.name}"
@@ -60,9 +62,9 @@ def test_screenshot_provenance_is_untrusted():
 def test_ocr_and_caption_are_separate_segments():
     drafts = screenshot_drafts(_FULL_RESULT)
 
-    assert [d.ordinal for d in drafts] == [OCR_ORDINAL, CAPTION_ORDINAL]
-    assert [d.modality for d in drafts] == ["ocr", "caption"]
-    assert [d.content_source for d in drafts] == ["extracted", "generated"]
+    assert [d.ordinal for d in drafts] == [CAPTION_ORDINAL, FIRST_OCR_ORDINAL]
+    assert [d.modality for d in drafts] == ["caption", "ocr"]
+    assert [d.content_source for d in drafts] == ["generated", "extracted"]
 
 
 def test_extracted_text_survives_as_its_own_segment():
@@ -110,8 +112,35 @@ def test_non_string_vlm_output_does_not_raise():
     drafts = screenshot_drafts({
         "title": ["a", "list"],
         "description": None,
-        "extracted_text": ["line one", "line two"],
+        "extracted_text": {"unusable": "shape"},
     })
 
     assert [d.modality for d in drafts] == ["caption"]
     assert drafts[0].content == DEFAULT_TITLE
+
+
+def test_line_shaped_extracted_text_is_kept_not_dropped():
+    """"Any readable text visible in the screenshot" is a field a VLM
+    answers with a list about as readily as with a string. Coercing that
+    to "" dropped the OCR segment, and the screenshot then counted as
+    processed on the strength of its caption alone."""
+    drafts = screenshot_drafts({**_FULL_RESULT, "extracted_text": ["line one", "line two"]})
+    ocr = [d for d in drafts if d.modality == "ocr"]
+
+    assert len(ocr) == 1
+    assert ocr[0].content == "line one\nline two"
+
+
+def test_long_extracted_text_is_split_for_the_embedder():
+    """The embedder's window is 512 tokens, so an unsplit page of
+    screenshotted text embedded only its opening and the rest was stored
+    but unreachable by search."""
+    page = "The board reviewed the quarterly numbers in detail. " * 150
+    drafts = screenshot_drafts({**_FULL_RESULT, "extracted_text": page})
+    ocr = [d for d in drafts if d.modality == "ocr"]
+
+    assert len(ocr) > 1
+    assert all(len(d.content) <= CHUNK_SIZE for d in ocr)
+    assert [d.ordinal for d in ocr] == list(range(FIRST_OCR_ORDINAL, FIRST_OCR_ORDINAL + len(ocr)))
+    # The tail is what silently vanished from retrieval before.
+    assert "quarterly numbers" in ocr[-1].content

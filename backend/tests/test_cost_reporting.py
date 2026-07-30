@@ -33,7 +33,14 @@ async def _run_turn(monkeypatch, route: str) -> dict:
 
     async def fake_search(q, n_results=5, file_ids=None):
         return [
-            {"text": f"chunk {i} about scaling", "source": "paper.pdf", "prov_trust": "trusted"}
+            {
+                "text": f"chunk {i} about scaling",
+                "source": "paper.pdf",
+                "source_type": "pdf",
+                "modality": "text",
+                "content_source": "extracted",
+                "prov_trust": "trusted",
+            }
             for i in range(5)
         ]
 

@@ -91,7 +91,7 @@ async def test_every_schema_field_is_written_not_defaulted(fake_collection):
     assert fields["prov_channel"] == "screenshot"
     assert fields["prov_author"] == ""
     assert fields["context_status"] == "skipped"
-    assert meta["schema_version"] == 2
+    assert meta["schema_version"] == 3
     assert meta["file_id"] == item.id
     assert meta["title"] == item.title
     assert meta["chunk_index"] == 0
@@ -158,7 +158,9 @@ async def test_contextualization_fires_for_long_text_segments(fake_collection):
     assert len(fake_collection.records) == 2
     for _id, document, meta in fake_collection.records:
         assert meta["context_status"] == "ok"
-        assert meta["content_source"] == "generated"
+        # The blurb is prepended to the embedded string only. The citable
+        # text is still the chunk verbatim, so content_source does not move.
+        assert meta["content_source"] == "extracted"
         assert document.startswith(_STUB_BLURB)
         # The verbatim text is what gets cited, so it must survive intact.
         assert meta["original_chunk"] == "x" * 10_000
@@ -183,3 +185,38 @@ async def test_the_contextualization_calls_are_billed_to_a_background_permit(fak
 async def test_no_drafts_writes_nothing(fake_collection):
     assert await index_item(_item(), []) == 0
     assert fake_collection.records == []
+
+
+async def test_a_reindex_replaces_rather_than_silently_dropping(fake_collection):
+    """chromadb's add on an existing id writes nothing and raises nothing,
+    so a corrected VLM result could never replace a bad first one while
+    index_item still reported it as written."""
+    item = _item()
+    await index_item(item, [
+        SegmentDraft(ordinal=0, modality="ocr", content="first ocr", content_source="extracted"),
+    ])
+
+    written = await index_item(item, [
+        SegmentDraft(ordinal=0, modality="ocr", content="corrected ocr", content_source="extracted"),
+    ])
+
+    assert written == 1
+    assert len(fake_collection.records) == 1
+    assert fake_collection.records[0][1] == "corrected ocr"
+
+
+async def test_a_shorter_reindex_drops_the_segments_it_no_longer_covers(fake_collection):
+    item = _item()
+    await index_item(item, [_draft(0, "ocr", 20), _draft(1, "ocr", 20), _draft(2, "ocr", 20)])
+
+    await index_item(item, [_draft(0, "ocr", 20)])
+
+    assert [rec[0] for rec in fake_collection.records] == [segment_id(item.id, 0)]
+
+
+async def test_every_record_carries_the_expected_segment_count(fake_collection):
+    """Writes are not transactional, so a truncated Item is only
+    detectable if the records say how many there should have been."""
+    await index_item(_item(), [_draft(0, "ocr", 20), _draft(1, "ocr", 20)])
+
+    assert {rec[2]["segment_total"] for rec in fake_collection.records} == {2}

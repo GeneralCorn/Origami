@@ -59,7 +59,9 @@ class ResearchState(TypedDict):
     current_note: str
     current_query: str
     research_notes: list[str]
-    retrieved_chunks: list[str]
+    # Rendered excerpt blocks, not bare chunk text: each one carries the
+    # header _excerpt_block writes. See that function for why.
+    retrieved_excerpts: list[str]
     # True once any retrieved segment is untrusted. ARCHITECTURE_V2 section 3
     # scopes trust to the bytes, so this is set by the ingest-time provenance
     # rather than by anything the model decides.
@@ -197,13 +199,45 @@ def _turn_meta(
 # -- Nodes ------------------------------------------------------------------
 
 
+_MODALITY_NOUNS = {
+    "text": "text",
+    "ocr": "text read out of an image",
+    "caption": "a description of an image",
+    "transcript": "a transcript",
+}
+
+
+def _excerpt_block(index: int, chunk: dict[str, Any]) -> str:
+    """One retrieval hit, headed by where its text actually came from.
+
+    Handing the analyzer bare strings under one "excerpts" heading, with
+    an instruction to cite them, is what ARCHITECTURE_V2 section 2 calls
+    "how a system confidently cites something nobody wrote": a VLM's guess
+    about what a screenshot shows arrives looking exactly like a sentence
+    a human wrote in a PDF. Every field this header prints is already on
+    the record; only the agent's view of it was dropping them.
+    """
+    noun = _MODALITY_NOUNS.get(chunk["modality"], chunk["modality"])
+    authored = (
+        "WRITTEN BY A MODEL about the source, not found in it"
+        if chunk["content_source"] == "generated"
+        else "verbatim from the source"
+    )
+    return (
+        f"[{index}] {chunk['source']} ({chunk['source_type']}) — {noun}, {authored}; "
+        f"trust: {chunk['prov_trust']}\n{chunk['text']}"
+    )
+
+
 async def retrieve_node(state: ResearchState) -> ResearchState:
     """Retrieve relevant contextualized chunks from ChromaDB."""
     t0 = time.perf_counter()
     query = state["current_query"]
 
     chunks = await vector_search(query, n_results=5, file_ids=state.get("scope"))
-    state["retrieved_chunks"] = [c["text"] for c in chunks]
+    state["retrieved_excerpts"] = [
+        _excerpt_block(i + 1, chunk) for i, chunk in enumerate(chunks)
+    ]
     # Taint accumulates across loops: a later clean retrieval does not
     # untaint a turn that has already read untrusted bytes.
     state["tainted"] = state.get("tainted", False) or any(
@@ -226,13 +260,13 @@ async def retrieve_node(state: ResearchState) -> ResearchState:
 
 async def analyze_node(state: ResearchState) -> ResearchState:
     """Analyze retrieved chunks and extract relevant information."""
-    if not state["retrieved_chunks"]:
+    if not state["retrieved_excerpts"]:
         logger.info("[LATENCY] analyze_node: skipped (no chunks)")
         return state
 
     t0 = time.perf_counter()
 
-    chunks_text = "\n\n---\n\n".join(state["retrieved_chunks"])
+    chunks_text = "\n\n---\n\n".join(state["retrieved_excerpts"])
     current_notes = "\n".join(f"- {n}" for n in state["research_notes"]) if state["research_notes"] else "None yet."
 
     prompt = Prompt.render(ANALYZE_PROMPT, {
@@ -796,7 +830,7 @@ def _initial_state(
         "current_note": current_note,
         "current_query": user_query,
         "research_notes": [],
-        "retrieved_chunks": [],
+        "retrieved_excerpts": [],
         "tainted": False,
         "loop_count": 0,
         "is_complete": False,

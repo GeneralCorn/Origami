@@ -156,6 +156,23 @@ def list_digests() -> list[dict]:
     return digests
 
 
+def digest_filenames() -> set[str]:
+    """Every screenshot filename any digest already has an entry for.
+
+    The store is the record of what was processed, but it only became the
+    record on this branch: every screenshot a user processed before it
+    exists in a digest and nowhere else. Reading the digests keeps that
+    history visible, so an upgrade does not re-run the VLM over the
+    user's whole capture history and append a second copy of every entry.
+    """
+    processed: set[str] = set()
+    for path in DIGESTS_DIR.glob("*.md"):
+        content = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"!\[]\(\.\./screenshots/(.+?)\)", content):
+            processed.add(match.group(1))
+    return processed
+
+
 def move_from_review(week: str, screenshot_name: str, new_category: str) -> bool:
     """Move a screenshot entry from 'Needs Review' to a real category.
 

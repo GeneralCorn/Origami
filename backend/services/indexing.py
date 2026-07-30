@@ -66,6 +66,20 @@ def _should_contextualize(draft: SegmentDraft, draft_count: int, whole_text: str
     )
 
 
+def _drop_stale_segments(collection, item: Item, live_ids: set[str]) -> None:
+    """Delete records of this Item that the current draft set no longer covers.
+
+    A re-index whose draft count shrank would otherwise leave the tail of
+    the previous run addressable and retrievable, citing an Item whose
+    content has since changed.
+    """
+    existing = set(collection.get(where={"file_id": item.id}, include=[])["ids"])
+    stale = sorted(existing - live_ids)
+    if stale:
+        collection.delete(ids=stale)
+        logger.info("Dropped %d stale segments for %s %s", len(stale), item.source_type, item.id)
+
+
 async def index_item(
     item: Item,
     drafts: list[SegmentDraft],
@@ -73,7 +87,21 @@ async def index_item(
     tags: list[str] | None = None,
     whole_text: str = "",
 ) -> int:
-    """Write one Item's segments to Chroma. Returns the number written."""
+    """Write one Item's segments to Chroma. Returns the number written.
+
+    Idempotent by segment id. `upsert` rather than `add` because
+    `collection.add` on an id that already exists is a silent no-op in
+    chromadb: it raised nothing, so a re-index reported a segment count it
+    had not written, and a corrected VLM result could never replace a bad
+    first one.
+
+    Every record carries `segment_total`, the number of segments this Item
+    is supposed to have. Writes are not transactional, so an ingest killed
+    part-way leaves a truncated Item behind; without the expected count on
+    the records themselves, a truncated Item is indistinguishable from a
+    complete one and its content_hash makes it look like a duplicate
+    forever.
+    """
     if not drafts:
         return 0
 
@@ -90,17 +118,11 @@ async def index_item(
         nonlocal written
         async with sem:
             content = draft.content
-            content_source = draft.content_source
             context_status = "skipped"
             if _should_contextualize(draft, len(drafts), whole_text):
                 try:
                     result = await contextualize_chunk(whole_text, draft.content, budget)
                     content = f"{result.text}\n\n{draft.content}"
-                    # Same inversion as ingest.py: content_source describes
-                    # the embedded string, and on success that string opens
-                    # with a model-written blurb. The verbatim text stays in
-                    # original_chunk, which is what rag.vector_search cites.
-                    content_source = "generated"
                     context_status = "ok"
                 except Exception as exc:
                     logger.warning(
@@ -112,12 +134,16 @@ async def index_item(
                 ordinal=draft.ordinal,
                 modality=draft.modality,
                 content=content,
-                content_source=content_source,
+                content_source=draft.content_source,
                 embedding_model=embedding_model,
                 context_status=context_status,
                 span=draft.span,
             )
-            collection.add(
+            # Embedding runs inside collection.upsert and is CPU-bound, so
+            # calling it directly from this coroutine stalled every other
+            # request on the process for the length of the ingest.
+            await asyncio.to_thread(
+                collection.upsert,
                 ids=[segment_id(item.id, draft.ordinal)],
                 documents=[segment.content],
                 metadatas=[segment_metadata(item, segment, extra={
@@ -126,10 +152,13 @@ async def index_item(
                     "tags": item_tags,
                     "content_hash": item.source_id,
                     "publish_date": item.created_at,
+                    "segment_total": len(drafts),
                 })],
             )
             written += 1
 
     await asyncio.gather(*[_write(draft) for draft in drafts])
+    live_ids = {segment_id(item.id, draft.ordinal) for draft in drafts}
+    await asyncio.to_thread(_drop_stale_segments, collection, item, live_ids)
     logger.info("Indexed %s %s: %d segments", item.source_type, item.id, written)
     return written

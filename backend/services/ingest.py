@@ -282,17 +282,17 @@ async def ingest_pdf(
             c_start, c_end = chunk_positions[i]
             p_start, p_end = _page_range(c_start, c_end, page_offsets)
 
-            # content_source describes Segment.content, which is the text
-            # that gets embedded. When contextualization succeeds that text
-            # opens with a Haiku-written blurb, so it is partly generated
-            # and saying "extracted" would be false. The chunk verbatim
-            # stays in original_chunk and is what services.rag returns as
-            # the citable text.
+            # content_source describes the citable text, which is the
+            # chunk verbatim: original_chunk below, and what services.rag
+            # returns as `text`. Contextualisation prepends a blurb to the
+            # embedded string only, and context_status is what records
+            # that. See the Segment docstring for why the two cannot share
+            # one field.
             segment = Segment(
                 ordinal=i,
                 modality="text",
                 content=contextualized,
-                content_source="extracted" if context_status == "failed" else "generated",
+                content_source="extracted",
                 embedding_model=embedding_model,
                 context_status=context_status,
                 span={"page_start": p_start, "page_end": p_end},

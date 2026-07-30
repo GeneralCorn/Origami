@@ -12,6 +12,12 @@ export async function createSnippet(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, title, tags }),
   });
-  if (!res.ok) throw new Error("Failed to create snippet");
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then((body) => body?.detail)
+      .catch(() => null);
+    throw new Error(typeof detail === "string" ? detail : "Failed to create snippet");
+  }
   return res.json();
 }

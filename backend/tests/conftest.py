@@ -42,11 +42,41 @@ def fake_collection(monkeypatch):
     """
 
     class Recorder:
+        """Enough of the Collection surface for index_item.
+
+        upsert replaces by id rather than appending, because that is the
+        behaviour index_item now depends on: chromadb's add is a silent
+        no-op on an existing id, and a recorder that appended would let a
+        regression back to add pass.
+        """
+
         def __init__(self):
             self.records = []
 
-        def add(self, ids, documents, metadatas):
-            self.records.append((ids[0], documents[0], metadatas[0]))
+        def _index_of(self, record_id):
+            for position, record in enumerate(self.records):
+                if record[0] == record_id:
+                    return position
+            return -1
+
+        def upsert(self, ids, documents, metadatas):
+            record = (ids[0], documents[0], metadatas[0])
+            position = self._index_of(ids[0])
+            if position >= 0:
+                self.records[position] = record
+            else:
+                self.records.append(record)
+
+        def get(self, where=None, include=None):
+            file_id = (where or {}).get("file_id")
+            matched = [
+                record for record in self.records
+                if file_id is None or record[2].get("file_id") == file_id
+            ]
+            return {"ids": [record[0] for record in matched]}
+
+        def delete(self, ids):
+            self.records = [record for record in self.records if record[0] not in set(ids)]
 
     recorder = Recorder()
     monkeypatch.setattr("services.indexing.get_collection", lambda: recorder)

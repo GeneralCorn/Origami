@@ -12,7 +12,7 @@ from typing import Literal
 
 from config import DATA_DIR
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SourceType = Literal["pdf", "note", "snippet", "screenshot", "photo", "calendar", "message"]
 Modality = Literal["text", "ocr", "caption", "transcript"]
@@ -51,6 +51,24 @@ class Item:
 
 @dataclass(frozen=True)
 class Segment:
+    """One retrievable unit of an Item.
+
+    `content` is the string that gets embedded. `content_source` describes
+    the *citable* text instead, which is the segment as its author wrote
+    it: `original_chunk` in Chroma, and what services.rag returns as
+    `text`. ARCHITECTURE_V2 section 2 asks the field one question, "did
+    this come out of the artifact or did a model invent it", and a
+    consumer can only act on the answer if it holds for every source.
+
+    The distinction matters because contextualisation prepends a
+    model-written blurb to `content` without touching the citable text.
+    That is recorded by `context_status`, not here. Flipping
+    content_source on a successful contextualisation is what made the
+    field mean "the embedded string is partly generated" on the pdf and
+    snippet paths and "the citable text is wholly generated" on the
+    caption path, so no filter over it could be written.
+    """
+
     ordinal: int
     modality: Modality
     content: str

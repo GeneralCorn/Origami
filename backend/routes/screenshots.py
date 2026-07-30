@@ -1,7 +1,6 @@
 """Screenshot upload, VLM processing, and digest API routes."""
 
 import logging
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,11 +9,12 @@ from pydantic import BaseModel
 from starlette.responses import FileResponse
 
 from config import SCREENSHOTS_DIR
-from services.chroma import delete_chunks, find_by_hash, hash_bytes, indexed_file_ids
+from services.chroma import delete_chunks, hash_bytes, indexed_file_ids
 from services.screenshot_ingest import index_screenshot
 from services.vision import check_ollama_health, analyze_screenshot
 from services.digest import (
     append_to_digest,
+    digest_filenames,
     get_digest,
     list_digests,
     move_from_review,
@@ -32,6 +32,35 @@ def _safe_ext(filename: str) -> str:
     return ext if ext in ALLOWED_EXTENSIONS else ".png"
 
 
+def _existing_by_hash(content_hash: str) -> Path | None:
+    """The screenshot already on disk holding these exact bytes, if any.
+
+    Uploads are named after their content hash, so this is a lookup rather
+    than a scan. It has to be a disk check: the store only learns about a
+    screenshot when /screenshots/process indexes it, so a Chroma lookup
+    leaves every screenshot that is still pending outside the dedup
+    window, which is the entire window that matters for a capture the user
+    just took twice. The extension is not part of the identity, because
+    the same bytes saved as .png and as .jpg are still one screenshot.
+    """
+    for ext in ALLOWED_EXTENSIONS:
+        path = SCREENSHOTS_DIR / f"{content_hash}{ext}"
+        if path.exists():
+            return path
+    return None
+
+
+def _processed_names() -> set[str]:
+    """Filenames of screenshots that must not be analysed again.
+
+    The union of the two records that exist. indexed_file_ids() is the
+    store, which is authoritative for anything this branch ingested;
+    digest_filenames() covers the history that predates it, where the
+    digest was the only record kept.
+    """
+    return indexed_file_ids() | digest_filenames()
+
+
 # ── Upload ────────────────────────────────────────────────────────
 
 
@@ -45,28 +74,30 @@ async def upload_screenshots(files: list[UploadFile] = File(...)):
 
         # Checked before the write, so a duplicate never lands on disk and
         # never becomes a pending item that re-processes to the same
-        # segments. Mirrors the PDF path in routes/upload.py.
-        existing = find_by_hash(content_hash)
+        # segments.
+        existing = _existing_by_hash(content_hash)
         if existing:
             results.append({
-                "id": existing["file_id"],
-                "filename": existing["filename"],
+                "id": existing.name,
+                "filename": existing.name,
                 "original_name": file.filename,
                 "size": len(content),
                 "content_hash": content_hash,
                 "status": "duplicate",
                 "duplicate": True,
             })
-            logger.info(f"Skipped duplicate screenshot: {existing['filename']}")
+            logger.info(f"Skipped duplicate screenshot: {existing.name}")
             continue
 
-        file_id = str(uuid.uuid4())
+        # Named after the content hash rather than a fresh uuid4, which is
+        # what makes the check above a lookup instead of a rescan of every
+        # screenshot the user ever captured.
         ext = _safe_ext(file.filename or "image.png")
-        filename = f"{file_id}{ext}"
+        filename = f"{content_hash}{ext}"
         (SCREENSHOTS_DIR / filename).write_bytes(content)
 
         results.append({
-            "id": file_id,
+            "id": filename,
             "filename": filename,
             "original_name": file.filename,
             "size": len(content),
@@ -83,16 +114,11 @@ async def upload_screenshots(files: list[UploadFile] = File(...)):
 
 @router.get("/screenshots/pending")
 async def list_pending():
-    """List screenshots that haven't been processed by the VLM yet.
-
-    "Processed" means present in Chroma, not present in a digest file. The
-    digest is a rendered view; deleting one must not silently re-index
-    every screenshot it mentioned and duplicate their embeddings.
-    """
-    processed = indexed_file_ids()
+    """List screenshots that haven't been processed by the VLM yet."""
+    processed = _processed_names()
     pending = []
     for path in SCREENSHOTS_DIR.iterdir():
-        if path.suffix.lower() in ALLOWED_EXTENSIONS and path.stem not in processed:
+        if path.suffix.lower() in ALLOWED_EXTENSIONS and path.name not in processed:
             stat = path.stat()
             pending.append({
                 "filename": path.name,
@@ -121,10 +147,10 @@ async def process_screenshots():
             detail="Ollama is not running or the VLM model is not available. Start Ollama first.",
         )
 
-    processed = indexed_file_ids()
+    processed = _processed_names()
     pending_paths = [
         p for p in SCREENSHOTS_DIR.iterdir()
-        if p.suffix.lower() in ALLOWED_EXTENSIONS and p.stem not in processed
+        if p.suffix.lower() in ALLOWED_EXTENSIONS and p.name not in processed
     ]
 
     if not pending_paths:
@@ -228,7 +254,7 @@ async def delete_screenshot(name: str):
     Without the segment delete, the knowledge base keeps OCR and caption
     records citing an image that is no longer on disk.
     """
-    deleted_chunks = delete_chunks(Path(name).stem)
+    deleted_chunks = delete_chunks(name)
     path = SCREENSHOTS_DIR / name
     if path.exists():
         path.unlink()
