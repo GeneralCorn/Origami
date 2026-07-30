@@ -24,14 +24,15 @@ The previous version of this document was produced without a single primary sour
 | Local files and PDFs | **Ship** | Already working today. Extends cleanly. |
 | Screenshots and images on disk | **Ship** | Already working in the uncommitted vision/digest branch. |
 | Apple Calendar and Reminders | **Ship**, with a hard TCC prerequisite | EventKit is a first-class local API. See §4 for the blocker. |
-| Apple Photos | **Ship**, with the same TCC prerequisite | PhotoKit is local. Same blocker as Calendars. |
+| Apple Photos | **Ship**, with the same TCC prerequisite | PhotoKit is local. Same blocker as Calendars. Note the limited-library mode below. |
 | iMessage | **Opt-in**, gated behind Full Disk Access | Local SQLite read. Legal and technically routine, but maximally sensitive. |
 | Slack | **Opt-in**, bring-your-own app manifest only | A shared distributed app is rate-limited into uselessness. See §2. |
 | Google Calendar | **Opt-in** | Standard OAuth, no restriction found. |
 | Todoist and similar task apps | **Opt-in** | Standard REST APIs. |
-| **Google Photos** | **Never** via API; **opt-in** as a Takeout import | The library-read scopes no longer exist. See §3. |
-| **Discord** | **Never** for personal accounts | Automating a user account is a bannable offence. See §5. |
+| **Google Photos** | **Opt-in** as a scheduled Takeout import; Picker API declined | Library-read scopes are gone. The Picker reads only a per-session selection. Takeout can be scheduled every two months to Drive. See §3 and its 2026-07-30 correction. |
+| **Discord** | **Defer**: legitimate but narrow | A user's own bot in a guild they administer can read full history with content. It never sees DMs, and the all-channels RPC scope is partner-gated. See §5 and its correction. |
 | **WhatsApp** | **Never** | No sanctioned path exists for personal message access. See §6. |
+| **WeChat** | **Never** | `[VERIFIED]` The only message-history endpoint serves enterprise-authenticated service accounts reading their own customer-service conversations, with a 24-hour window, and is explicitly unavailable to personal accounts. Community tools read the local database or web client, which is the WhatsApp situation in §6. |
 
 Three of the sources named in the product brief land in the "never" column. That is the single most important output of this research, and it is a change from the previous plan, which treated all of them as buildable.
 
@@ -82,9 +83,25 @@ An app can therefore read back only what it itself uploaded. There is no longer 
 
 "Ingest my Google Photos" becomes "import a selection from Google Photos," which is a materially different product promise and a much worse one for an ambient personal knowledge base. A picker-based flow cannot support background sync, and it cannot support "search everything I have ever photographed."
 
-**Decided 2026-07-26: Apple Photos is the primary photo surface, and Google Photos is served by Takeout import only.** PhotoKit still grants full local library access on macOS, which preserves the ambient, background-sync behaviour the product needs. Google Photos users get a one-time Takeout bulk import, which sidesteps the API entirely and is the only remaining route to library-wide coverage.
+**Decided 2026-07-26: Apple Photos is the primary photo surface, and Google Photos is served by Takeout import only.** PhotoKit still grants full local library access on macOS, which preserves the ambient, background-sync behaviour the product needs. Google Photos users get a Takeout bulk import, which sidesteps the API entirely and is the only remaining route to library-wide coverage.
 
 The Picker API is explicitly **not** being built. It cannot sync in the background, so it would add a whole OAuth surface in exchange for a promise materially weaker than the one Takeout already delivers.
+
+### Correction, 2026-07-30: Takeout is not a one-time manual import
+
+`[VERIFIED]` Two claims above were understated, found while re-checking primary sources.
+
+First, describing the API route as impossible is too strong. The Picker API is a **sanctioned, consented read path** under the surviving scope `photospicker.mediaitems.readonly`, and once a session's `mediaItemsSet` is true an app reads full bytes and metadata for the picked items. What it cannot do is enumerate, search, or list anything the user did not pick in that session, and access expires with the session. So the accurate framing is "reads only a per-session user selection", not "no API exists". The decision to skip it is unchanged; only the reasoning needed correcting.
+
+Second, and more usefully: `[VERIFIED]` Google's own [Download your data](https://support.google.com/accounts/answer/3024190) supports **scheduled exports**, "Automatically create an archive of your selected data every 2 months for one year", delivered to Google Drive, Dropbox, OneDrive, or Box. `[SECONDARY]` Reporting from June 2026 describes Photos-specific **incremental** Takeout, where the first scheduled export is a full baseline and later ones carry only what changed since the last success.
+
+That turns Takeout from a one-time manual chore into a genuine recurring pipeline: the user configures the schedule once, Google delivers to Drive roughly six times a year, and Origami ingests from Drive. It is not background sync and the latency is measured in weeks, but it is materially better than the one-shot import assumed above, and it strengthens rather than weakens the decision to skip the Picker. Takeout cannot be initiated programmatically, so the user configures the schedule themselves.
+
+### Apple Photos is not a guarantee of the whole library
+
+`[VERIFIED]` PhotoKit still reads the library from a signed macOS app declaring `NSPhotoLibraryUsageDescription`, so the "Ship" verdict stands. What the section above omits is `PHAuthorizationStatus.limited`. A user can grant access to a chosen subset, and that selection then acts as a filter on every PhotoKit fetch, so the app sees only those assets. `[SECONDARY]` Apple's guidance is that the "Select Photos" option cannot be removed from the permission prompt, meaning limited mode is always reachable regardless of what the app asks for.
+
+Origami can detect the state and must handle it rather than assuming a full library, and it should say plainly in the interface when it is only seeing a subset. Silently indexing 40 photos out of 40,000 and answering as though that were everything is the same failure class as a missing usage-description key: the result looks like an empty library rather than a denied permission.
 
 `[UNVERIFIED]` Whether Google Takeout exports are practical to ingest at personal-library scale, meaning tens of thousands of images with sidecar JSON metadata, has not been tested. Since Takeout is now the sole Google Photos path rather than one option among several, this spike is load-bearing and should run before the photo work is scheduled.
 
@@ -154,6 +171,18 @@ The sanctioned path is a bot account, which can only see servers it has been exp
 ### Design consequence
 
 Discord cannot deliver the "everything I have ever discussed" promise. A bot integration is buildable for servers the user controls, and that is a narrow and much less valuable slice. Recommend deferring Discord entirely rather than shipping something that reads as broken relative to the pitch.
+
+### Correction, 2026-07-30: the conclusion holds, the reason was wrong
+
+`[VERIFIED]` The section above implies a bot is a token gesture. It is not. A user who invites their own bot to a guild they administer can legitimately read full message history including content, which is the same bring-your-own-app pattern §2 already recommends for Slack.
+
+Per [Get Channel Messages](https://docs.discord.com/developers/resources/message), reading history needs `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY`. The real gate is content: an app receives empty `content`, `embeds`, `attachments`, and `components` unless it has the `MESSAGE_CONTENT` privileged intent. `[VERIFIED]` For a self-hosted app under 100 guilds that intent is a toggle in the developer portal with **no Discord approval required**, which is exactly Origami's situation.
+
+`[VERIFIED]` Two further paths were missed. The OAuth2 scope `messages.read` exists and, per [topics/oauth2](https://docs.discord.com/developers/topics/oauth2), "allows you to read messages from all client channels" through the local RPC server, respecting the user's own access. It is realistically unobtainable: [topics/rpc](https://docs.discord.com/developers/topics/rpc) restricts RPC to approved apps and testers, and `dm_channels.read` carries the same partner-only restriction. Separately, user-installed apps exist (`USER_INSTALL`, visible only to the authorizing user across their servers and DMs) but their install links are limited to the `applications.commands` and `bot` scopes and they cannot take actions in a server, so they are an interaction surface rather than a history API.
+
+So: **only self-bots are prohibited.** Authorized apps are legitimate. The recommendation to defer Discord stands, but the honest reason is coverage rather than illegitimacy. A bot reaches servers the user administers, never their DMs, and the all-channels RPC path is gated behind an approval a solo project will not get. The matrix verdict changes from "Never for personal accounts" to "Defer: legitimate but narrow".
+
+`[SECONDARY]` The self-bot prohibition itself still rests on secondary sourcing, since Discord's support article and Developer Policy both return HTTP 403 to direct fetching. What was retrieved directly is [Discord's Terms](https://discord.com/terms), which prohibit scraping the services with "any robot, spider, crawler, scraper, or other automatic device" and using "unauthorized software designed to modify the services".
 
 ---
 
