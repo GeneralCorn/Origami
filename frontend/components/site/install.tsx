@@ -3,10 +3,11 @@ import { ArrowUpRightIcon } from "@/components/site/icons";
 import { readmeSetupUrl, roadmapUrl } from "@/lib/site";
 
 const prerequisites = [
-  "Ollama, serving locally",
-  "Bun 1.3 or newer",
+  "macOS on Apple silicon",
+  "Node 20.19 or newer",
   "Python 3.13 with uv",
   "An Anthropic API key",
+  "Ollama, for screenshot vision",
 ];
 
 function Comment({ children }: { children: string }) {
@@ -23,8 +24,8 @@ export function Install() {
             Build it from source, tonight.
           </h2>
           <p className="mt-5 text-lg leading-relaxed text-muted">
-            The desktop app is in active development. Until the signed build ships, Origami runs
-            from a clone.
+            Origami is a desktop app now. It launches its own backend, so there is no second
+            terminal to babysit. Until the signed build ships, it runs from a clone.
           </p>
         </Reveal>
         <div className="mt-14 grid gap-8 lg:grid-cols-5">
@@ -35,20 +36,19 @@ export function Install() {
                   {"git clone https://github.com/GeneralCorn/Origami.git\n"}
                   {"cd Origami\n"}
                   {"\n"}
-                  <Comment># pull the local models</Comment>
-                  {"\nollama pull qwen2.5-vl:7b\n"}
-                  {"ollama pull deepseek-r1:8b\n"}
-                  {"\n"}
-                  <Comment># backend, in its own terminal</Comment>
+                  <Comment># backend dependencies</Comment>
                   {"\ncd backend\n"}
                   {"uv sync\n"}
                   {"cp .env.example .env.local  "}
                   <Comment># add your ANTHROPIC_API_KEY</Comment>
-                  {"\nuv run uvicorn main:app --reload\n"}
+                  {"\n\n"}
+                  <Comment># the app, which starts the backend itself</Comment>
+                  {"\ncd ../desktop\n"}
+                  {"npm install\n"}
+                  {"npm run dev\n"}
                   {"\n"}
-                  <Comment># the interface is mid-move to the desktop shell,</Comment>
-                  {"\n"}
-                  <Comment># so follow README.md for its current command</Comment>
+                  <Comment># screenshot vision, optional</Comment>
+                  {"\nollama pull qwen2.5-vl:7b"}
                 </code>
               </pre>
             </div>
@@ -83,8 +83,9 @@ export function Install() {
                   A signed app is coming
                 </h3>
                 <p className="mt-3 text-[0.95rem] leading-relaxed text-muted">
-                  Origami is being rebuilt as a signed, notarized macOS application with the
-                  backend bundled inside, no terminal required. Building from source stays
+                  Packaging works today: a DMG with the Python runtime bundled inside and no
+                  terminal required. What is missing is an Apple Developer ID, without which macOS
+                  discards the app&rsquo;s permissions on every rebuild. Building from source stays
                   supported either way.
                 </p>
                 <a

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { FoldMark } from "@/components/site/logo";
 import { GitHubIcon } from "@/components/site/icons";
-import { repoUrl } from "@/lib/site";
+import { fetchStarCount, repoUrl } from "@/lib/site";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const stars = await fetchStarCount();
+
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b border-line bg-paper/85 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between px-6 md:px-8">
@@ -39,6 +41,14 @@ export function SiteHeader() {
           >
             <GitHubIcon className="h-4 w-4" />
             GitHub
+            {stars === null ? null : (
+              <>
+                <span aria-hidden="true" className="h-4 w-px bg-line-strong" />
+                <span className="font-mono text-[13px] tabular-nums text-muted">
+                  {stars.toLocaleString("en-US")}
+                </span>
+              </>
+            )}
           </a>
         </nav>
       </div>
