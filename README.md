@@ -77,63 +77,61 @@ That ordering is the single most important decision in the roadmap, because retr
 
 ## Prerequisites
 
-- [Ollama](https://ollama.com/) installed and running
-- [Bun](https://bun.sh/) (v1.3+)
-- [Python](https://www.python.org/) 3.13+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- macOS on Apple silicon. The shell is Electron, so Windows and Linux are reachable in principle, but neither has been built or tested and packaging produces an arm64 macOS app only.
+- [Node](https://nodejs.org/) 20.19+
+- [Python](https://www.python.org/) 3.13+ and [uv](https://docs.astral.sh/uv/)
+- An Anthropic API key
+- [Ollama](https://ollama.com/), only for screenshot vision
 
 ## Setup
 
-### 1. Ollama
+Origami is a desktop app. The Electron main process starts the Python backend itself, on a port it picks at runtime, so there is no second terminal to keep alive.
 
-Install Ollama and pull the default model:
-
-```bash
-# macOS
-brew install ollama
-
-# Start the Ollama server (runs on port 11434)
-ollama serve
-
-# In a separate terminal, pull the default model
-ollama pull deepseek-r1:8b
-```
-
-Make sure `ollama serve` is running before starting the backend.
-
-### 2. Backend
+### 1. Backend dependencies
 
 ```bash
 cd backend
-
-# Create virtual environment and install dependencies
 uv sync
-
-# Copy the example env file and adjust if needed
-cp .env.example .env.local
-
-# Start the FastAPI server (runs on port 8000)
-uv run uvicorn main:app --reload
+cp .env.example .env.local   # add your ANTHROPIC_API_KEY
 ```
 
-### 3. Frontend
+Nothing needs to be started here. `.env.local` is read from the data directory in a packaged build and from this folder in development, so the launcher's environment always wins over both.
+
+### 2. The app
 
 ```bash
-cd frontend
-
-# Install dependencies
-bun install
-
-# Copy the example env file and adjust if needed
-cp .env.example .env.local
-
-# Start the dev server (runs on port 3000)
-bun run dev
+cd desktop
+npm install
+npm run dev
 ```
 
-### 4. Open the app
+This compiles the main process, starts the Vite dev server, and launches Electron against it with hot reload.
 
-Visit [http://localhost:3000](http://localhost:3000).
+### 3. Screenshot vision, optional
+
+```bash
+ollama pull qwen2.5-vl:7b
+```
+
+Vision is the one model call that runs locally. Everything else in the agent goes to the Anthropic API using the key from step 1.
+
+### Other useful scripts
+
+Run these from `desktop/`.
+
+| Script | What it does |
+|---|---|
+| `npm run build` | Compiles the main process, typechecks the renderer, builds the production bundle |
+| `npm start` | Runs Electron against the built bundle |
+| `npm run smoke` | Starts the backend, waits for readiness, prints `SMOKE_TEST_OK`, exits without a window |
+| `npm run package` | Produces `out/Origami-darwin-arm64/Origami.app` |
+| `npm run make` | Produces the DMG and the ZIP in `out/make` |
+
+Packaged builds are unsigned until a Developer ID is configured. macOS ties a permission grant to a signing identity, so an unsigned build presents as a new application on every rebuild and any permission you grant it is discarded.
+
+### A note on `frontend/`
+
+That directory is the public launch site, not the application UI. The app's interface lives in `desktop/renderer`.
 
 ## Configuration
 
@@ -143,21 +141,24 @@ All config is driven by `.env.local` files (git-ignored). Each directory ships a
 
 | Variable | Default | Description |
 |---|---|---|
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `deepseek-r1:8b` | LLM used for chat, agent, and ingestion |
-| `OLLAMA_TIMEOUT` | `120` | Request timeout in seconds |
-| `EMBEDDING_MODEL` | `bge-small-en-v1.5` | Sentence-transformer for ChromaDB (re-ingest if changed) |
+| `ANTHROPIC_API_KEY` | none | Required. Every agent and ingestion call uses it |
+| `ORIGAMI_DATA_DIR` | the `backend/` folder | Where everything written lives. A packaged build points this at Application Support |
+| `ORIGAMI_AUTH_TOKEN` | unset | When set, every request must carry it. Electron generates one per launch |
+| `ORIGAMI_PORT` | `8000` | `0` asks the OS for a free port, which is what the desktop app does |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint, used only by screenshot vision |
+| `OLLAMA_VLM_MODEL` | `qwen2.5-vl:7b` | The vision model, the one call that runs locally |
+| `EMBEDDING_MODEL` | `bge-small-en-v1.5` | Embedding model, recorded per segment so a change means an incremental re-embed rather than a full re-ingest |
 | `CHROMA_DIR` | `chroma_data` | Path to ChromaDB storage |
 | `CHROMA_COLLECTION` | `documents` | ChromaDB collection name |
-| `FRONTEND_URL` | `http://localhost:3000` | Allowed CORS origin |
+| `FRONTEND_URL` | `http://localhost:3000` | Allowed CORS origin. Electron passes the renderer's real origin instead |
 | `CHUNK_SIZE` | `1200` | Characters per chunk during ingestion |
 | `CHUNK_OVERLAP` | `300` | Overlap between chunks |
 
-### Frontend (`frontend/.env.local`)
+`OLLAMA_MODEL` still exists in `config.py` but is imported by nothing. Text generation moved to the Anthropic API and the local path was removed; whether to restore a local tier is an open decision, and `resolve_model()` in `services/llm.py` is the seam it would go through.
 
-| Variable | Default | Description |
-|---|---|---|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API URL |
+### The renderer
+
+The renderer takes no configuration. Electron passes it the backend's port and a per-launch auth token, because the port is chosen at runtime rather than fixed.
 
 ### Switching models
 
@@ -183,29 +184,32 @@ Changing `EMBEDDING_MODEL` requires re-ingesting every document, because existin
 ```
 Origami/
 ├── docs/                 # Roadmap and research (read before contributing)
-├── backend/              # FastAPI + Python 3.13
-│   ├── main.py           # App entry, CORS, routers
-│   ├── config.py         # Centralized env var config
-│   ├── routes/           # chat, chats, documents, notes, upload
+├── backend/              # FastAPI + Python 3.13, run as a sidecar
+│   ├── main.py           # App entry, auth gate, routers
+│   ├── config.py         # Centralized env var config, ORIGAMI_DATA_DIR
+│   ├── routes/           # chat, chats, documents, notes, snippets, screenshots, usage
 │   ├── services/
 │   │   ├── agent.py      # LangGraph research agent
-│   │   ├── ingest.py     # Contextual Retrieval pipeline
+│   │   ├── llm.py        # The one place a model is called: routing, budget, ledger
+│   │   ├── schema.py     # Item, Segment, Provenance
+│   │   ├── ingest.py     # Contextual Retrieval pipeline for PDFs
+│   │   ├── indexing.py   # Shared write path for non-PDF sources
 │   │   ├── rag.py        # Dense vector search
 │   │   ├── chroma.py     # Vector store access
-│   │   ├── embeddings.py # bge-small-en-v1.5
-│   │   └── ollama.py     # Local LLM streaming
+│   │   ├── migrate.py    # Schema migrations and backfill
+│   │   ├── vision.py     # Screenshot description, local via Ollama
+│   │   └── embeddings.py # bge-small-en-v1.5 via fastembed
 │   ├── prompts/          # Prompt templates
-│   ├── notes/            # Markdown note files
+│   ├── tests/            # pytest suite
 │   └── pyproject.toml
-├── frontend/             # Next.js 16 + React 19
-│   ├── app/              # Pages and API routes
-│   ├── components/       # chat, editor, reader, sidebar, database, layout, ui
-│   ├── lib/api/          # Backend API client
-│   └── package.json
-└── package.json
+├── desktop/              # The application
+│   ├── main/             # Electron main process and sidecar lifecycle
+│   ├── preload/          # Context bridge
+│   ├── renderer/         # Vite + React 19 interface
+│   └── scripts/          # Python runtime bundling
+├── frontend/             # The public launch site, not the app UI
+└── scripts/              # Repo-level maintenance scripts
 ```
-
-Note that `frontend/` becomes the static launch site in Phase 7, and the desktop renderer moves to Vite in Phase 1. If you are reading this after those land, the layout will differ.
 
 ## Contributing
 
