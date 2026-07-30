@@ -17,25 +17,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypedDict
 
-from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, END
 
 from prompts import ANALYZE_PROMPT, REVIEW_PROMPT, FINAL_RESPONSE_WITH_ACTIONS_PROMPT, CHAT_ONLY_INSTRUCTION, EDIT_ALLOWED_INSTRUCTION, CLASSIFY_PROMPT, FAST_FACT_PROMPT
 from routes.notes import create_note_file, append_to_note
 from services.rag import vector_search
-from config import ANTHROPIC_API_KEY, HAIKU_MODEL, SONNET_MODEL, NOTES_DIR
-from services.text_utils import strip_think_tags
+from config import LOOPS_BY_ROUTE, NOTES_DIR
+from services import usage
+from services.llm import Budget, ModelResult, Prompt, Purpose, complete
 
 logger = logging.getLogger(__name__)
 
 MAX_RESEARCH_LOOPS = 3
-
-# Loops per route type
-_LOOPS_BY_ROUTE = {
-    "fast_fact": 0,
-    "normal_rag": 1,
-    "deep_research": 3,
-}
 
 # Short greetings and tokens that are always FAST_FACT without an LLM call
 _FAST_FACT_TOKENS = frozenset({
@@ -66,9 +59,15 @@ class ResearchState(TypedDict):
     # Routing
     route: str          # "fast_fact" | "normal_rag" | "deep_research"
     max_loops: int      # per-route cap passed into review_node
+    # Per-turn spend permit. Shared by reference across nodes, the same way
+    # research_notes already is, so complete() sees one call counter.
+    budget: Budget
     # Observability accumulators
     total_input_tokens: int
     total_output_tokens: int
+    total_cache_read_tokens: int
+    total_cost_usd: float
+    models_used: list[str]
     # Individual final response stats (for text event metadata)
     final_latency_s: float
     final_input_tokens: int
@@ -88,12 +87,53 @@ def _emit_event(state: ResearchState, event_type: str, content: Any,
     state["events"].append(event)
 
 
-def _extract_usage(response: Any) -> dict[str, int]:
-    """Extract token counts from a ChatOllama response, defaulting to 0."""
-    usage = getattr(response, "usage_metadata", None) or {}
+def _account(state: ResearchState, result: ModelResult) -> None:
+    """Fold one call's usage into the turn's running totals."""
+    state["total_input_tokens"] += result.input_tokens
+    state["total_output_tokens"] += result.output_tokens
+    state["total_cache_read_tokens"] += result.cache_read_tokens
+    state["total_cost_usd"] += result.cost_usd
+    if result.model not in state["models_used"]:
+        state["models_used"].append(result.model)
+
+
+def _call_meta(result: ModelResult) -> dict[str, Any]:
+    """Per-thought metadata for a single model call."""
     return {
-        "input_tokens": usage.get("input_tokens", 0),
-        "output_tokens": usage.get("output_tokens", 0),
+        "latency_s": round(result.elapsed_s, 2),
+        "input_tokens": result.input_tokens,
+        "output_tokens": result.output_tokens,
+        "model": result.model,
+        "cost_usd": round(result.cost_usd, 6),
+    }
+
+
+def _turn_meta(
+    state: ResearchState,
+    total_latency_s: float,
+    *,
+    latency_s: float,
+    input_tokens: int,
+    output_tokens: int,
+) -> dict[str, Any]:
+    """Cumulative turn metadata attached to the final text part.
+
+    Shared by the graph path and the fast_fact bypass. Keeping one builder
+    is what stops fast_fact turns from silently reporting zero cost when a
+    field is added to only one of them.
+    """
+    return {
+        "latency_s": round(latency_s, 2),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_input_tokens": state["total_input_tokens"],
+        "total_output_tokens": state["total_output_tokens"],
+        "total_latency_s": round(total_latency_s, 2),
+        "total_cost_usd": round(state["total_cost_usd"], 6),
+        "total_calls": state["budget"].calls_made,
+        "cache_read_tokens": state["total_cache_read_tokens"],
+        "models": state["models_used"],
+        "route": state["route"],
     }
 
 
@@ -134,31 +174,22 @@ async def analyze_node(state: ResearchState) -> ResearchState:
         return state
 
     t0 = time.perf_counter()
-    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=2048)
 
     chunks_text = "\n\n---\n\n".join(state["retrieved_chunks"])
     current_notes = "\n".join(f"- {n}" for n in state["research_notes"]) if state["research_notes"] else "None yet."
 
-    prompt = ANALYZE_PROMPT.format(
-        current_query=state["current_query"],
-        current_notes=current_notes,
-        chunks_text=chunks_text,
-        active_notes=state["current_note"][:2000] if state["current_note"] else "No active notes.",
+    prompt = Prompt.render(ANALYZE_PROMPT, {
+        "current_query": state["current_query"],
+        "current_notes": current_notes,
+        "chunks_text": chunks_text,
+        "active_notes": state["current_note"][:2000] if state["current_note"] else "No active notes.",
+    })
+
+    result = await complete(
+        Purpose.ANALYZE, prompt, state["budget"], loop=state["loop_count"]
     )
-
-    t_llm = time.perf_counter()
-    response = await llm.ainvoke(prompt)
-    t_llm_done = time.perf_counter()
-    llm_latency = t_llm_done - t_llm
-    usage = _extract_usage(response)
-    state["total_input_tokens"] += usage["input_tokens"]
-    state["total_output_tokens"] += usage["output_tokens"]
-    logger.info("[LATENCY] analyze_node LLM call: %.3fs (%d in / %d out tokens)",
-                llm_latency, usage["input_tokens"], usage["output_tokens"])
-
-    analysis = response.content
-    if isinstance(analysis, str):
-        analysis = strip_think_tags(analysis)
+    _account(state, result)
+    analysis = result.text
 
     if "NO_RELEVANT_INFO" not in analysis:
         # Extract bullet points as individual notes
@@ -171,7 +202,7 @@ async def analyze_node(state: ResearchState) -> ResearchState:
         if new_notes:
             state["research_notes"].extend(new_notes)
             _emit_event(state, "note_taking", f"Extracted {len(new_notes)} findings",
-                        meta={"latency_s": round(llm_latency, 2), **usage})
+                        meta=_call_meta(result))
 
     logger.info("[LATENCY] analyze_node total: %.3fs", time.perf_counter() - t0)
     return state
@@ -220,27 +251,18 @@ async def review_node(state: ResearchState) -> ResearchState:
         logger.info("[LATENCY] review_node: skipped (no research notes)")
         return state
 
-    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=1024)
     notes_text = "\n".join(f"- {n}" for n in state["research_notes"])
 
-    prompt = REVIEW_PROMPT.format(
-        original_question=state["messages"][-1]["content"] if state["messages"] else state["current_query"],
-        notes_text=notes_text,
+    prompt = Prompt.render(REVIEW_PROMPT, {
+        "original_question": state["messages"][-1]["content"] if state["messages"] else state["current_query"],
+        "notes_text": notes_text,
+    })
+
+    result = await complete(
+        Purpose.REVIEW, prompt, state["budget"], loop=state["loop_count"]
     )
-
-    t_llm = time.perf_counter()
-    response = await llm.ainvoke(prompt)
-    t_llm_done = time.perf_counter()
-    llm_latency = t_llm_done - t_llm
-    usage = _extract_usage(response)
-    state["total_input_tokens"] += usage["input_tokens"]
-    state["total_output_tokens"] += usage["output_tokens"]
-    logger.info("[LATENCY] review_node LLM call: %.3fs (%d in / %d out tokens)",
-                llm_latency, usage["input_tokens"], usage["output_tokens"])
-
-    review = response.content
-    if isinstance(review, str):
-        review = strip_think_tags(review)
+    _account(state, result)
+    review = result.text
 
     if "COMPLETE" in review and "INCOMPLETE" not in review:
         state["is_complete"] = True
@@ -250,7 +272,7 @@ async def review_node(state: ResearchState) -> ResearchState:
         if refined and len(refined) > 5:
             state["current_query"] = refined
             _emit_event(state, "reasoning", f"Refining search: {refined}",
-                        meta={"latency_s": round(llm_latency, 2), **usage})
+                        meta=_call_meta(result))
         else:
             state["is_complete"] = True
 
@@ -392,21 +414,26 @@ def _regex_extract_fields(text: str) -> dict | None:
     return None
 
 
-def _extract_json(text: str) -> dict | None:
-    """Extract a JSON object from LLM output, tolerating extra text or code fences."""
+def _extract_json(text: str) -> tuple[dict | None, str]:
+    """Extract a JSON object from LLM output, tolerating extra text or fences.
+
+    Returns the payload and which strategy recovered it. The strategy is
+    recorded per turn: how often the main answer path needs repair is the
+    measurement that decides whether a cheaper model can be trusted here.
+    """
     text = text.strip()
 
     # Direct parse
     result = _try_parse_json(text)
     if result is not None:
-        return result
+        return result, "direct"
 
     # Strip markdown code fences
     m = re.search(r"```(?:json)?\s*\n(.*?)\n```", text, re.DOTALL)
     if m:
         result = _try_parse_json(m.group(1).strip())
         if result is not None:
-            return result
+            return result, "fence"
 
     # Find outermost { ... }
     start = text.find("{")
@@ -414,20 +441,19 @@ def _extract_json(text: str) -> dict | None:
     if start != -1 and end > start:
         result = _try_parse_json(text[start : end + 1])
         if result is not None:
-            return result
+            return result, "braces"
 
     # Final fallback: regex field extraction (handles LaTeX/JSON escape collisions)
     result = _regex_extract_fields(text)
     if result is not None:
-        return result
+        return result, "regex"
 
-    return None
+    return None, "failed"
 
 
 async def final_response_node(state: ResearchState) -> ResearchState:
     """Synthesize a final answer from all research notes + conversation context."""
     t0 = time.perf_counter()
-    llm = ChatAnthropic(model=SONNET_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0.3, max_tokens=4096)
 
     notes_text = "\n".join(f"- {n}" for n in state["research_notes"]) if state["research_notes"] else "No specific research findings."
     history = "\n".join(f"{m['role']}: {m['content']}" for m in state["messages"][-6:])
@@ -440,32 +466,35 @@ async def final_response_node(state: ResearchState) -> ResearchState:
         else CHAT_ONLY_INSTRUCTION
     )
 
-    prompt = (FINAL_RESPONSE_WITH_ACTIONS_PROMPT
-        .replace("{history}", history)
-        .replace("{notes_text}", notes_text)
-        .replace("{active_notes}", active_notes)
-        .replace("{active_note_title}", active_title)
-        .replace("{mode_instruction}", mode_instruction)
+    # str.replace rather than str.format: the template carries literal JSON
+    # braces, which format would read as placeholders.
+    prompt = Prompt.render(
+        FINAL_RESPONSE_WITH_ACTIONS_PROMPT,
+        {
+            "history": history,
+            "notes_text": notes_text,
+            "active_notes": active_notes,
+            "active_note_title": active_title,
+            "mode_instruction": mode_instruction,
+        },
+        mode="replace",
     )
-    t_llm = time.perf_counter()
-    response = await llm.ainvoke(prompt)
-    t_llm_done = time.perf_counter()
-    llm_latency = t_llm_done - t_llm
-    usage = _extract_usage(response)
-    state["total_input_tokens"] += usage["input_tokens"]
-    state["total_output_tokens"] += usage["output_tokens"]
-    state["final_latency_s"] = round(llm_latency, 2)
-    state["final_input_tokens"] = usage["input_tokens"]
-    state["final_output_tokens"] = usage["output_tokens"]
-    logger.info("[LATENCY] final_response_node LLM call: %.3fs (%d in / %d out tokens)",
-                llm_latency, usage["input_tokens"], usage["output_tokens"])
 
-    _emit_event(state, "reasoning", "Generated response",
-                meta={"latency_s": round(llm_latency, 2), **usage})
+    result = await complete(
+        Purpose.FINAL_RESPONSE,
+        prompt,
+        state["budget"],
+        loop=state["loop_count"],
+        has_notes=bool(state["research_notes"]),
+    )
+    _account(state, result)
+    state["final_latency_s"] = round(result.elapsed_s, 2)
+    state["final_input_tokens"] = result.input_tokens
+    state["final_output_tokens"] = result.output_tokens
 
-    raw = response.content
-    if isinstance(raw, str):
-        raw = strip_think_tags(raw)
+    _emit_event(state, "reasoning", "Generated response", meta=_call_meta(result))
+
+    raw = result.text
 
     if not raw.strip():
         if state["research_notes"]:
@@ -475,7 +504,8 @@ async def final_response_node(state: ResearchState) -> ResearchState:
             state["final_answer"] = "I couldn't find specific information about that. Could you rephrase?"
         return state
 
-    data = _extract_json(raw)
+    data, json_strategy = _extract_json(raw)
+    await usage.record_json_strategy(state["budget"].turn_id, result.model, json_strategy)
 
     if not data:
         # JSON extraction failed — treat entire response as plain chat
@@ -539,11 +569,16 @@ async def classify_query(
     query: str,
     history: str,
     note_preview: str,
+    budget: Budget,
 ) -> str:
     """Classify query into fast_fact | normal_rag | deep_research.
 
     Uses cheap heuristics first, falls back to Haiku for ambiguous cases.
     Returns one of: 'fast_fact', 'normal_rag', 'deep_research'.
+
+    Takes the turn's budget so the classifier's own tokens are recorded
+    against the turn it classifies. They used to be discarded entirely,
+    which understated every turn by one Haiku call.
     """
     q = query.strip().lower()
 
@@ -559,13 +594,14 @@ async def classify_query(
         return "deep_research"
 
     # LLM classifier for everything else
-    t0 = time.perf_counter()
-    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=10)
-    prompt = CLASSIFY_PROMPT.format(history=history, note_preview=note_preview[:500], query=query)
-    response = await llm.ainvoke(prompt)
-    text = (response.content or "").strip().upper()
-    latency = time.perf_counter() - t0
-    logger.info("[ROUTE] LLM classifier → %s (%.3fs)", text, latency)
+    prompt = Prompt.render(CLASSIFY_PROMPT, {
+        "history": history,
+        "note_preview": note_preview[:500],
+        "query": query,
+    })
+    result = await complete(Purpose.CLASSIFY, prompt, budget)
+    text = result.text.strip().upper()
+    logger.info("[ROUTE] LLM classifier → %s (%.3fs)", text, result.elapsed_s)
 
     if "FAST_FACT" in text:
         return "fast_fact"
@@ -578,39 +614,30 @@ async def _stream_fast_fact(
     query: str,
     history: str,
     note: str,
+    state: ResearchState,
 ):
     """Bypass retrieval entirely — answer directly from context using Haiku."""
     note_section = f"User's current note:\n{note[:1500]}\n" if note.strip() else ""
-    prompt = FAST_FACT_PROMPT.format(
-        history=history,
-        note_section=note_section,
-        query=query,
-    )
+    prompt = Prompt.render(FAST_FACT_PROMPT, {
+        "history": history,
+        "note_section": note_section,
+        "query": query,
+    })
 
-    t0 = time.perf_counter()
-    llm = ChatAnthropic(model=HAIKU_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0.3, max_tokens=1024)
-    response = await llm.ainvoke(prompt)
-    latency = time.perf_counter() - t0
-    usage = _extract_usage(response)
-
-    answer = response.content
-    if isinstance(answer, str):
-        answer = strip_think_tags(answer)
-
-    logger.info("[ROUTE] fast_fact response: %.3fs (%d in / %d out tokens)", latency, usage["input_tokens"], usage["output_tokens"])
+    t_pipeline = time.perf_counter()
+    result = await complete(Purpose.FAST_FACT, prompt, state["budget"])
+    _account(state, result)
 
     yield {
         "type": "text",
-        "content": answer or "I couldn't generate a response.",
-        "meta": {
-            "latency_s": round(latency, 2),
-            "input_tokens": usage["input_tokens"],
-            "output_tokens": usage["output_tokens"],
-            "total_input_tokens": usage["input_tokens"],
-            "total_output_tokens": usage["output_tokens"],
-            "total_latency_s": round(latency, 2),
-            "route": "fast_fact",
-        },
+        "content": result.text or "I couldn't generate a response.",
+        "meta": _turn_meta(
+            state,
+            time.perf_counter() - t_pipeline,
+            latency_s=result.elapsed_s,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+        ),
     }
 
 
@@ -653,18 +680,16 @@ def build_research_graph() -> StateGraph:
 research_agent = build_research_graph()
 
 
-async def run_research_agent(
-    messages: list[dict[str, str]],
-    current_note: str = "",
-    allow_edits: bool = False,
-    active_note_title: str = "",
-    active_note_id: str | None = None,
-    scope: list[str] | None = None,
-) -> ResearchState:
-    """
-    Run the research agent to completion and return final state.
 
-    For streaming, use `stream_research_agent` instead.
+
+async def _prepare_turn(
+    messages: list[dict[str, str]],
+    current_note: str,
+) -> tuple[str, str, str, int, Budget]:
+    """Resolve the user query, history window, route, and per-turn budget.
+
+    Runs before the graph so the classifier's own tokens land on the same
+    turn_id as the rest of the turn.
     """
     user_query = ""
     for msg in reversed(messages):
@@ -673,10 +698,28 @@ async def run_research_agent(
             break
 
     history = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:])
-    route = await classify_query(user_query, history, current_note)
-    max_loops = _LOOPS_BY_ROUTE.get(route, 1)
 
-    initial_state: ResearchState = {
+    budget = Budget.interactive()
+    route = await classify_query(user_query, history, current_note, budget)
+    max_loops = LOOPS_BY_ROUTE.get(route, 1)
+    budget.adopt_route(route, max_loops)
+
+    return user_query, history, route, max_loops, budget
+
+
+def _initial_state(
+    messages: list[dict[str, str]],
+    current_note: str,
+    user_query: str,
+    route: str,
+    max_loops: int,
+    budget: Budget,
+    allow_edits: bool,
+    active_note_title: str,
+    active_note_id: str | None,
+    scope: list[str] | None,
+) -> ResearchState:
+    return {
         "messages": messages,
         "current_note": current_note,
         "current_query": user_query,
@@ -693,15 +736,16 @@ async def run_research_agent(
         "scope": scope,
         "route": route,
         "max_loops": max_loops,
+        "budget": budget,
         "total_input_tokens": 0,
         "total_output_tokens": 0,
+        "total_cache_read_tokens": 0,
+        "total_cost_usd": 0.0,
+        "models_used": [],
         "final_latency_s": 0.0,
         "final_input_tokens": 0,
         "final_output_tokens": 0,
     }
-
-    result = await research_agent.ainvoke(initial_state)
-    return result
 
 
 async def stream_research_agent(
@@ -718,51 +762,25 @@ async def stream_research_agent(
     Yields dicts with:
         {"type": "searching"|"reasoning"|"note_taking"|"text"|"action", "content": ...}
     """
-    user_query = ""
-    for msg in reversed(messages):
-        if msg["role"] == "user":
-            user_query = msg["content"]
-            break
+    user_query, history, route, max_loops, budget = await _prepare_turn(messages, current_note)
 
-    history = "\n".join(f"{m['role']}: {m['content']}" for m in messages[-3:])
-    route = await classify_query(user_query, history, current_note)
-    max_loops = _LOOPS_BY_ROUTE.get(route, 1)
+    state = _initial_state(
+        messages, current_note, user_query, route, max_loops, budget,
+        allow_edits, active_note_title, active_note_id, scope,
+    )
 
     # Fast-fact: skip the graph entirely
     if route == "fast_fact":
-        async for event in _stream_fast_fact(user_query, history, current_note):
+        async for event in _stream_fast_fact(user_query, history, current_note, state):
             yield event
         return
 
-    initial_state: ResearchState = {
-        "messages": messages,
-        "current_note": current_note,
-        "current_query": user_query,
-        "research_notes": [],
-        "retrieved_chunks": [],
-        "tainted": False,
-        "loop_count": 0,
-        "is_complete": False,
-        "final_answer": "",
-        "events": [],
-        "allow_edits": allow_edits,
-        "active_note_title": active_note_title,
-        "active_note_id": active_note_id,
-        "scope": scope,
-        "route": route,
-        "max_loops": max_loops,
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "final_latency_s": 0.0,
-        "final_input_tokens": 0,
-        "final_output_tokens": 0,
-    }
-
     last_event_count = 0
+    total_cost = 0.0
     t_pipeline = time.perf_counter()
-    logger.info("[ROUTE] %s → max_loops=%d", route, max_loops)
+    logger.info("[ROUTE] %s → max_loops=%d, max_calls=%d", route, max_loops, budget.max_calls)
 
-    async for state_update in research_agent.astream(initial_state):
+    async for state_update in research_agent.astream(state):
         # Each state_update is a dict of {node_name: updated_state}
         for node_name, node_state in state_update.items():
             if node_name == "__end__":
@@ -770,6 +788,10 @@ async def stream_research_agent(
 
             t_node_done = time.perf_counter()
             logger.info("[LATENCY] node '%s' completed at +%.3fs", node_name, t_node_done - t_pipeline)
+
+            # LangGraph hands each node a copy of the state dict, so a
+            # scalar written by a node is only visible on what it yields.
+            total_cost = node_state.get("total_cost_usd", total_cost)
 
             events = node_state.get("events", [])
             # Yield any new events since last check
@@ -782,15 +804,14 @@ async def stream_research_agent(
                 yield {
                     "type": "text",
                     "content": node_state["final_answer"],
-                    "meta": {
-                        "latency_s": node_state.get("final_latency_s", 0.0),
-                        "input_tokens": node_state.get("final_input_tokens", 0),
-                        "output_tokens": node_state.get("final_output_tokens", 0),
-                        "total_input_tokens": node_state.get("total_input_tokens", 0),
-                        "total_output_tokens": node_state.get("total_output_tokens", 0),
-                        "total_latency_s": round(time.perf_counter() - t_pipeline, 2),
-                        "route": node_state.get("route", "normal_rag"),
-                    },
+                    "meta": _turn_meta(
+                        node_state,
+                        time.perf_counter() - t_pipeline,
+                        latency_s=node_state.get("final_latency_s", 0.0),
+                        input_tokens=node_state.get("final_input_tokens", 0),
+                        output_tokens=node_state.get("final_output_tokens", 0),
+                    ),
                 }
 
-    logger.info("[LATENCY] === pipeline total: %.3fs ===", time.perf_counter() - t_pipeline)
+    logger.info("[LATENCY] === pipeline total: %.3fs, %d calls, $%.6f ===",
+                time.perf_counter() - t_pipeline, budget.calls_made, total_cost)

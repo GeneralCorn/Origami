@@ -4,10 +4,13 @@ import base64
 import json
 import logging
 import re
+import uuid
+from datetime import datetime, timezone
 
 import httpx
 
 from config import OLLAMA_URL, OLLAMA_VLM_MODEL, OLLAMA_TIMEOUT
+from services import usage
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +77,34 @@ def _parse_vlm_response(text: str) -> dict:
     }
 
 
+async def _record_vlm_usage(body: dict, prompt_chars: int) -> None:
+    """Record the local VLM's token counts at zero dollars.
+
+    Ollama returns these in the response body and they were being dropped.
+    They cost nothing, and they are the only numbers that could ever
+    substantiate a claim that routing work to a local model is cheaper.
+    """
+    await usage.record(usage.CallRecord(
+        ts=datetime.now(timezone.utc).isoformat(),
+        purpose="vision",
+        route="",
+        origin="background",
+        model=body.get("model", OLLAMA_VLM_MODEL),
+        input_tokens=int(body.get("prompt_eval_count", 0) or 0),
+        output_tokens=int(body.get("eval_count", 0) or 0),
+        cache_read_tokens=0,
+        cache_creation_tokens=0,
+        billable_input_tokens=int(body.get("prompt_eval_count", 0) or 0),
+        elapsed_s=round(int(body.get("total_duration", 0) or 0) / 1e9, 4),
+        prompt_chars=prompt_chars,
+        cost_usd=0.0,
+        priced=False,
+        turn_id=str(uuid.uuid4()),
+        loop=0,
+        stub=False,
+    ))
+
+
 async def analyze_screenshot(image_path) -> dict:
     """Send an image to the Ollama VLM and get structured analysis."""
     image_bytes = image_path.read_bytes()
@@ -96,7 +127,10 @@ async def analyze_screenshot(image_path) -> dict:
         resp = await client.post(f"{OLLAMA_URL}/api/chat", json=payload)
         resp.raise_for_status()
 
-    raw = resp.json()["message"]["content"]
+    body = resp.json()
+    await _record_vlm_usage(body, len(_ANALYZE_PROMPT) + len(image_b64))
+
+    raw = body["message"]["content"]
     result = _parse_vlm_response(raw)
 
     # Ensure all expected fields exist

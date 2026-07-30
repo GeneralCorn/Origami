@@ -59,10 +59,11 @@ def _sse(data: dict) -> str:
 
 def _reasoning_block(content: str, block_id: str, meta: dict | None = None) -> str:
     """Emit a complete reasoning part (start + delta + end)."""
-    pm = {"origami": meta} if meta else None
+    # `is not None`, not truthiness: an empty meta dict is still a metadata
+    # channel, and dropping the block on falsiness silently loses stats.
     start_event: dict = {"type": "reasoning-start", "id": block_id}
-    if pm:
-        start_event["providerMetadata"] = pm
+    if meta is not None:
+        start_event["providerMetadata"] = {"origami": meta}
     return (
         _sse(start_event)
         + _sse({"type": "reasoning-delta", "id": block_id, "delta": content})
@@ -123,7 +124,7 @@ async def chat(request: ChatRequest):
                             t_now - t_start, t_now - t_last_event)
                 text_id = str(uuid.uuid4())
                 text_start: dict = {"type": "text-start", "id": text_id}
-                if meta:
+                if meta is not None:
                     text_start["providerMetadata"] = {"origami": meta}
                 yield _sse(text_start)
                 yield _sse({"type": "text-delta", "id": text_id, "delta": content})
