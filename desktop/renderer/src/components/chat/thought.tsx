@@ -2,10 +2,14 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronRight } from "lucide-react";
 
+import { formatCost } from "@/lib/utils";
+
 export interface ThoughtMeta {
   latency_s?: number;
   input_tokens?: number;
   output_tokens?: number;
+  model?: string;
+  cost_usd?: number;
 }
 
 interface ThoughtProps {
@@ -71,6 +75,8 @@ export default function Thought({ text, isStreaming, meta }: ThoughtProps) {
               {meta != null && meta.input_tokens != null && meta.input_tokens > 0 && (
                 <p className="text-[10px] font-mono text-muted-foreground/60 mt-1.5 pt-1.5 border-t border-border/30">
                   {meta.input_tokens} in &middot; {meta.output_tokens ?? 0} out tokens
+                  {meta.model && <> &middot; {meta.model}</>}
+                  {meta.cost_usd != null && <> &middot; {formatCost(meta.cost_usd)}</>}
                 </p>
               )}
             </div>

@@ -5,6 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * A footer that always reads "$0.0000" teaches the reader the number is
+ * fake, so anything under a tenth of a cent shows as a bound instead.
+ */
+export function formatCost(usd: number) {
+  if (usd <= 0) return "$0";
+  if (usd < 0.0001) return "<$0.0001";
+  return `$${usd.toFixed(4)}`;
+}
+
 export const PASTEL_PALETTE = [
   {
     name: "Rose",

@@ -3,6 +3,22 @@ import { User, Bot } from "lucide-react";
 import Thought, { type ThoughtMeta } from "./thought";
 import AnimatedText from "./animated-text";
 import ActionCard from "./action-card";
+import { formatCost } from "@/lib/utils";
+
+/** Cumulative stats the backend attaches to the final text part. */
+export interface TurnMeta {
+  latency_s?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_latency_s: number;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_cost_usd?: number;
+  total_calls?: number;
+  cache_read_tokens?: number;
+  models?: string[];
+  route?: string;
+}
 
 export interface ActionHandlers {
   onFileAction?: (data: { action: string; note_id: string; title: string; filename: string; markdown: string; updated_at: string }) => void;
@@ -84,7 +100,7 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
     for (let i = message.parts.length - 1; i >= 0; i--) {
       const part = message.parts[i];
       if (part.type === "text") {
-        const m = (part as any).providerMetadata?.origami as Record<string, number> | undefined;
+        const m = (part as any).providerMetadata?.origami as TurnMeta | undefined;
         if (m?.total_latency_s != null) return m;
       }
     }
@@ -168,6 +184,15 @@ export default function Message({ message, isStreaming, actionHandlers }: Messag
             <p className="text-[10px] font-mono text-muted-foreground/40 mt-3 pt-2 border-t border-border/20">
               Total: {cumulativeMeta.total_latency_s.toFixed(2)}s
               {" \u00b7 "}{cumulativeMeta.total_input_tokens ?? 0} in / {cumulativeMeta.total_output_tokens ?? 0} out
+              {cumulativeMeta.cache_read_tokens != null && cumulativeMeta.cache_read_tokens > 0 && (
+                <> {"\u00b7 "}{cumulativeMeta.cache_read_tokens} cached</>
+              )}
+              {cumulativeMeta.total_cost_usd != null && (
+                <> {"\u00b7 "}{formatCost(cumulativeMeta.total_cost_usd)}</>
+              )}
+              {cumulativeMeta.total_calls != null && (
+                <> {"\u00b7 "}{cumulativeMeta.total_calls} {cumulativeMeta.total_calls === 1 ? "call" : "calls"}</>
+              )}
             </p>
           )}
         </div>

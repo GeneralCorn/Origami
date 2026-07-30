@@ -34,6 +34,11 @@ chats/
 # embedding model cache (fastembed)
 backend/models/
 
+# model-call ledger and the stub-mode request dumps. The dumps hold verbatim
+# prompt text — the user's documents and conversation — so this must stay
+# ignored even though the ledger itself records no content.
+backend/usage/
+
 # runtime data (kept tracked temporarily for easy sync)
 # backend/notes/
 # backend/pdfs/

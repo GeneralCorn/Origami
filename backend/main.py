@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse
 # Ensure [LATENCY] logs from agent + chat are visible
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-from config import FRONTEND_URL, EXTRA_ALLOWED_ORIGINS, AUTH_TOKEN
+from config import FRONTEND_URL, EXTRA_ALLOWED_ORIGINS, AUTH_TOKEN, MODEL_STUB
 from services.migrate import run_migrations
 from services.schema import SCHEMA_VERSION
 from routes.chat import router as chat_router
@@ -33,6 +33,7 @@ from routes.documents import router as documents_router
 from routes.notes import router as notes_router
 from routes.upload import router as upload_router
 from routes.screenshots import router as screenshots_router
+from routes.usage import router as usage_router
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,11 @@ def _migrate() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if MODEL_STUB:
+        logger.warning(
+            "ORIGAMI_MODEL_STUB is set: every model call is answered from a local "
+            "stub and no request reaches the API. Answers are not real."
+        )
     threading.Thread(target=_migrate, name="origami-migrate", daemon=True).start()
     yield
 
@@ -107,6 +113,7 @@ app.include_router(documents_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(screenshots_router, prefix="/api")
+app.include_router(usage_router, prefix="/api")
 
 
 @app.get("/health")

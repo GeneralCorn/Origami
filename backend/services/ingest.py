@@ -16,19 +16,16 @@ from datetime import datetime
 from pathlib import Path
 
 import pymupdf
-from langchain_anthropic import ChatAnthropic
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from prompts import CONTEXTUALIZER_PROMPT
 from services.chroma import get_collection
-from config import ANTHROPIC_API_KEY, HAIKU_MODEL, CHUNK_SIZE, CHUNK_OVERLAP
+from config import CHUNK_SIZE, CHUNK_OVERLAP, CONTEXT_DOC_CHARS
 from services.embeddings import current_embedding_model_id
+from services.llm import Budget, ModelResult, Prompt, Purpose, complete
 from services.schema import Item, Segment, segment_id, segment_metadata
-from services.text_utils import strip_think_tags
 
 logger = logging.getLogger(__name__)
-
-CONTEXT_MODEL = HAIKU_MODEL
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=CHUNK_SIZE,
@@ -118,37 +115,45 @@ def _page_range(chunk_start: int, chunk_end: int, page_offsets: list[int]) -> tu
     return page_start, page_end
 
 
+def document_prefix(whole_document: str) -> str:
+    """The document text prepended to every chunk request for this document.
+
+    Byte-identical across a document's chunks, which is what makes it
+    cacheable. Truncated because it is sent once per chunk.
+    """
+    truncated = whole_document[:CONTEXT_DOC_CHARS]
+    if len(whole_document) > CONTEXT_DOC_CHARS:
+        truncated += "\n\n[... document truncated for context window ...]"
+    return truncated
+
+
 async def contextualize_chunk(
-    llm: ChatAnthropic,
     whole_document: str,
     chunk_content: str,
-) -> str:
+    budget: Budget,
+) -> ModelResult:
     """
-    Generate a contextual prefix for a chunk using the local LLM.
+    Generate a contextual prefix for a chunk.
 
-    The LLM reads the whole document + the specific chunk and produces
+    The model reads the whole document + the specific chunk and produces
     a short blurb situating the chunk. This is prepended to the chunk
     before embedding.
     """
-    # Truncate the whole document if it's extremely long to fit in context
-    # 7B models typically have 4-8k context; reserve room for the chunk + response
-    max_doc_chars = 12000
-    truncated_doc = whole_document[:max_doc_chars]
-    if len(whole_document) > max_doc_chars:
-        truncated_doc += "\n\n[... document truncated for context window ...]"
-
-    prompt = CONTEXTUALIZER_PROMPT.format(
-        whole_document=truncated_doc,
-        chunk_content=chunk_content,
+    # The document prefix is byte-identical across every chunk of this
+    # document and is roughly 88% of each request, so it is sent as a
+    # cacheable block. The prompt text itself is unchanged, only the message
+    # structure, so the bytes the model sees are the same and there is no
+    # quality risk. CONTEXTUALIZER_PROMPT is already document-first, which
+    # is what makes the prefix reusable.
+    prompt = Prompt.render(
+        CONTEXTUALIZER_PROMPT,
+        {
+            "whole_document": document_prefix(whole_document),
+            "chunk_content": chunk_content,
+        },
+        cache_after="whole_document",
     )
-
-    response = await llm.ainvoke(prompt)
-
-    context = response.content
-    if isinstance(context, str):
-        context = strip_think_tags(context)
-
-    return context
+    return await complete(Purpose.CONTEXTUALIZE, prompt, budget)
 
 
 def _pick_subtitle(title: str) -> str:
@@ -237,25 +242,41 @@ async def ingest_pdf(
 
     # Step 3-5: Contextualize chunks and insert into ChromaDB incrementally
     collection = get_collection()
-    llm = ChatAnthropic(model=CONTEXT_MODEL, api_key=ANTHROPIC_API_KEY, temperature=0, max_tokens=100)
+    # Ingest is background work: it may process the document it was handed
+    # and may not reach into a live session's state. Budget.background is
+    # what makes that structural rather than a convention.
+    budget = Budget.background("ingest", max_calls=len(chunks))
     chunk_tags = tags or []
     embedding_model = current_embedding_model_id()
     ingested = 0
+    failed = 0
+    doc_input_tokens = 0
+    doc_output_tokens = 0
+    doc_cache_read_tokens = 0
+    doc_cost_usd = 0.0
 
     # Semaphore limits concurrent API requests
     sem = asyncio.Semaphore(4)
 
     async def _contextualize_and_insert(i: int, chunk: str) -> None:
-        nonlocal ingested
+        nonlocal ingested, failed
+        nonlocal doc_input_tokens, doc_output_tokens, doc_cache_read_tokens, doc_cost_usd
         async with sem:
             try:
-                context = await contextualize_chunk(llm, full_text, chunk)
-                contextualized = f"{context}\n\n{chunk}"
+                result = await contextualize_chunk(full_text, chunk, budget)
+                contextualized = f"{result.text}\n\n{chunk}"
                 context_status = "ok"
+                doc_input_tokens += result.input_tokens
+                doc_output_tokens += result.output_tokens
+                doc_cache_read_tokens += result.cache_read_tokens
+                doc_cost_usd += result.cost_usd
             except Exception as e:
+                # A failed contextualization is billed and buys nothing, so
+                # it is counted rather than only logged per chunk.
                 logger.warning(f"Contextualization failed for chunk {i+1}: {e}")
                 contextualized = chunk
                 context_status = "failed"
+                failed += 1
 
             # Compute page range for this chunk
             c_start, c_end = chunk_positions[i]
@@ -297,4 +318,9 @@ async def ingest_pdf(
     ])
 
     logger.info(f"Finished ingesting {ingested} contextualized chunks for {filename}")
+    logger.info(
+        "[COST] ingest %s: %d chunks (%d failed), %d in (%d cache read) / %d out, $%.4f",
+        filename, ingested, failed, doc_input_tokens, doc_cache_read_tokens,
+        doc_output_tokens, doc_cost_usd,
+    )
     return ingested
