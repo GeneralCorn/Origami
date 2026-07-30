@@ -73,6 +73,12 @@ EXTRA_ALLOWED_ORIGINS: list[str] = [
 CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1200"))
 CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "300"))
 
+# ARCHITECTURE_V2 section 4 gates contextualisation on segment length. A
+# segment shorter than half a chunk is either a document's tail or a short
+# standalone capture; in both cases a full Haiku call buys a blurb the
+# reader did not need.
+CONTEXTUALIZE_MIN_CHARS: int = int(os.getenv("ORIGAMI_CONTEXTUALIZE_MIN_CHARS", "600"))
+
 # How much of the source document is prepended to every contextualization
 # request. That prefix is byte-identical across a document's chunks, so it
 # is sent as a cacheable block; Anthropic's minimum cacheable prefix for

@@ -30,3 +30,24 @@ def clean_ledger():
         shutil.rmtree(USAGE_DIR)
     USAGE_DIR.mkdir(parents=True, exist_ok=True)
     yield
+
+
+@pytest.fixture
+def fake_collection(monkeypatch):
+    """A recorder standing in for Chroma.
+
+    A real add would embed, and embedding downloads a model the offline
+    test suite must not need. The fastembed model is loaded lazily on
+    first __call__, so importing services.chroma stays safe.
+    """
+
+    class Recorder:
+        def __init__(self):
+            self.records = []
+
+        def add(self, ids, documents, metadatas):
+            self.records.append((ids[0], documents[0], metadatas[0]))
+
+    recorder = Recorder()
+    monkeypatch.setattr("services.indexing.get_collection", lambda: recorder)
+    return recorder

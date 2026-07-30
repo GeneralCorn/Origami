@@ -123,6 +123,20 @@ def list_all_tags() -> list[str]:
     return sorted(tags)
 
 
+def indexed_file_ids() -> set[str]:
+    """Every file_id present in the collection.
+
+    A full metadata scan, the same shape as list_all_tags. Reading ids and
+    splitting on the ordinal suffix would be cheaper but would misparse any
+    file_id that itself ends in "-<digits>".
+    """
+    col = get_collection()
+    if col.count() == 0:
+        return set()
+    results = col.get(include=["metadatas"])
+    return {meta.get("file_id", "") for meta in results["metadatas"] or []} - {""}
+
+
 def get_document_meta(file_id: str) -> dict | None:
     """Look up metadata for a document by file_id (reads first chunk)."""
     col = get_collection()

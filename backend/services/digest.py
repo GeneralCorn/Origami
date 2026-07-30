@@ -10,13 +10,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from config import DIGESTS_DIR
+from services.text_utils import as_text
 
 logger = logging.getLogger(__name__)
 
-# Categories that map to ## headings (order preserved in file)
+# Categories that map to ## headings (order preserved in file). Mirrors
+# CATEGORIES in the renderer's digest viewer, so a recategorize the UI
+# offers is never normalised away.
 CATEGORY_ORDER = [
     "news", "social_media", "code", "documentation",
-    "conversation", "recipe", "shopping", "finance", "other",
+    "conversation", "meme", "recipe", "shopping", "finance", "other",
 ]
 
 
@@ -59,6 +62,19 @@ def _category_slug(heading: str) -> str:
     return heading.strip().lower().replace(" ", "_")
 
 
+def normalize_category(raw: object) -> str:
+    """Model output decides a heading, so it may not be an arbitrary string.
+
+    The analyze prompt invites the VLM to "suggest a new one-word category
+    if none fit", and the suggestion is interpolated straight into a
+    "## {heading}" line. A category carrying a newline therefore writes
+    arbitrary markdown structure into the digest. CATEGORY_ORDER is the
+    closed set that prevents it; anything outside files under "other".
+    """
+    slug = as_text(raw).lower().replace(" ", "_")
+    return slug if slug in CATEGORY_ORDER else "other"
+
+
 def append_to_digest(
     vision_result: dict,
     screenshot_filename: str,
@@ -68,11 +84,11 @@ def append_to_digest(
     path = _ensure_digest(week)
     content = path.read_text(encoding="utf-8")
 
-    category = vision_result.get("category", "other").lower().replace(" ", "_")
-    confidence = vision_result.get("confidence", "high")
-    title = vision_result.get("title", "Untitled")
-    source = vision_result.get("source_app", "unknown")
-    description = vision_result.get("description", "")
+    category = normalize_category(vision_result.get("category"))
+    confidence = as_text(vision_result.get("confidence")) or "high"
+    title = as_text(vision_result.get("title")) or "Untitled"
+    source = as_text(vision_result.get("source_app")) or "unknown"
+    description = as_text(vision_result.get("description"))
 
     # Low confidence → file under "Needs Review"
     if confidence == "low":
@@ -194,14 +210,3 @@ def move_from_review(week: str, screenshot_name: str, new_category: str) -> bool
     }
     append_to_digest(vision_result, screenshot_name, week=week)
     return True
-
-
-def get_processed_filenames() -> set[str]:
-    """Scan all digest files and return set of screenshot filenames already processed."""
-    processed = set()
-    for path in DIGESTS_DIR.glob("*.md"):
-        content = path.read_text(encoding="utf-8")
-        # Match ![](../screenshots/FILENAME)
-        for m in re.finditer(r"!\[]\(\.\./screenshots/(.+?)\)", content):
-            processed.add(m.group(1))
-    return processed

@@ -19,6 +19,8 @@ export interface ChromaDocument {
   file_id: string;
   filename: string;
   title?: string;
+  /** pdf | note | snippet | screenshot | ... — the knowledge base is no longer PDFs only. */
+  source_type: string;
   chunk_count: number;
   tags: string[];
   publish_date?: string;

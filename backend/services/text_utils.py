@@ -11,6 +11,16 @@ def strip_think_tags(text: str) -> str:
     return _THINK_TAG_RE.sub("", text).strip()
 
 
+def as_text(value: object) -> str:
+    """Coerce one field of a model's JSON output to a string.
+
+    A VLM asked for a string may answer with a list, a number or null, and
+    that value then reaches an f-string or .lower() and takes the whole
+    item down. Anything that is not a string is not text.
+    """
+    return value.strip() if isinstance(value, str) else ""
+
+
 # Common filler words to drop when shortening titles
 _STOPWORDS = {
     "a", "an", "the", "of", "for", "and", "or", "in", "on", "to", "with",

@@ -76,6 +76,23 @@ def provenance_for_upload() -> Provenance:
     return Provenance(origin="self", trust="untrusted", channel="upload")
 
 
+def provenance_for_screenshot() -> Provenance:
+    """A screenshot, of content Origami cannot attribute.
+
+    trust is `untrusted` and section 3 names this case verbatim: "the OCR
+    of a screenshot of a web page" is on its untrusted list.
+
+    origin is `unknown` rather than `self`. The upload factory's `self`
+    rests on the user having chosen a file from their own machine, which
+    says something about the file. A screenshot is a picture of an
+    application surface whose content may be the user's own draft, a
+    colleague's message, or a public page, and the only signal available
+    is the VLM's source_app guess, which is model output and must never
+    decide a security-adjacent field.
+    """
+    return Provenance(origin="unknown", trust="untrusted", channel="screenshot")
+
+
 def data_relative(path: Path) -> str:
     """raw_ref as a DATA_DIR-relative POSIX path.
 
