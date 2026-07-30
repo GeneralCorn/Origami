@@ -23,11 +23,12 @@ CHATS_DIR: Path = DATA_DIR / "chats"
 NOTES_DIR: Path = DATA_DIR / "notes"
 CHROMA_DIR: Path = Path(os.getenv("CHROMA_DIR", str(DATA_DIR / "chroma_data")))
 MODELS_DIR: Path = DATA_DIR / "models"
+USAGE_DIR: Path = DATA_DIR / "usage"
 SAVED_TAGS_FILE: Path = DATA_DIR / "saved_tags.json"
 
 for _dir in (
     SCREENSHOTS_DIR, DIGESTS_DIR, UPLOADS_DIR, PDFS_DIR,
-    CHATS_DIR, NOTES_DIR, CHROMA_DIR, MODELS_DIR,
+    CHATS_DIR, NOTES_DIR, CHROMA_DIR, MODELS_DIR, USAGE_DIR,
 ):
     _dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,3 +69,60 @@ EXTRA_ALLOWED_ORIGINS: list[str] = [
 # ── Ingestion ────────────────────────────────────────────────────
 CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1200"))
 CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "300"))
+
+# How much of the source document is prepended to every contextualization
+# request. That prefix is byte-identical across a document's chunks, so it
+# is sent as a cacheable block; Anthropic's minimum cacheable prefix for
+# Haiku 4.5 is 4,096 tokens, and at the ~4 chars/token of English prose a
+# 12,000-char prefix lands near 3,000 tokens — below the floor, where the
+# cache silently never engages and no error is returned. 24,000 chars is
+# ~6,000 tokens, which clears the floor even on dense notation that
+# tokenizes closer to 3 chars/token.
+CONTEXT_DOC_CHARS: int = int(os.getenv("CONTEXT_DOC_CHARS", "24000"))
+
+# ── Cost controls ────────────────────────────────────────────────
+MAX_LOOPS_CLAMP: int = 5
+
+_DEFAULT_LOOPS_BY_ROUTE: dict[str, int] = {
+    "fast_fact": 0,
+    "normal_rag": 1,
+    "deep_research": 3,
+}
+
+
+def _parse_loops(raw: str) -> dict[str, int]:
+    """Parse "fast_fact=0,normal_rag=1,deep_research=3" over the defaults.
+
+    Every value is clamped to 0..MAX_LOOPS_CLAMP because this is the only
+    knob that multiplies the per-turn call count, and an unclamped typo
+    would bill an unbounded number of retrieval passes. Unparseable entries
+    and unknown route names are dropped rather than raising, so a bad
+    override degrades to the default policy instead of failing startup.
+    """
+    loops = dict(_DEFAULT_LOOPS_BY_ROUTE)
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry or "=" not in entry:
+            continue
+        name, _, value = entry.partition("=")
+        name = name.strip()
+        if name not in loops:
+            continue
+        try:
+            loops[name] = max(0, min(MAX_LOOPS_CLAMP, int(value.strip())))
+        except ValueError:
+            continue
+    return loops
+
+
+LOOPS_BY_ROUTE: dict[str, int] = _parse_loops(os.getenv("ORIGAMI_LOOPS_BY_ROUTE", ""))
+
+# Route the normal_rag final synthesis to Haiku instead of Sonnet. Off by
+# default: the node must emit a single valid JSON object containing LaTeX,
+# and there is no way to A/B the resulting answer quality without a key.
+CHEAP_FINAL: bool = os.getenv("ORIGAMI_CHEAP_FINAL", "") not in ("", "0", "false", "False")
+
+# Answer every model call from a local stub and dump the would-be request
+# to disk instead of calling the API. Lets the whole pipeline, prompt
+# assembly, and cache-block structure be exercised with no API key.
+MODEL_STUB: bool = os.getenv("ORIGAMI_MODEL_STUB", "") not in ("", "0", "false", "False")
