@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-26
 **Status:** Plan, no code written
-**Reads with:** `ARCHITECTURE_V2.md`, `INTEGRATIONS_RESEARCH.md`, `COST_MODEL.md`
+**Reads with:** `ARCHITECTURE_V2.md`, `INTEGRATIONS_RESEARCH.md`, `COST_MODEL.md`, `EDITOR_DECISION.md`
 
 ---
 
@@ -89,13 +89,23 @@ The existing Next.js project is then repurposed as the public launch page. See �
 
 The product metaphor is Obsidian with intelligence, and the brief calls for cleaner presentation with lower text density than the current interface.
 
-`[SECONDARY]` For a markdown-first editor, CodeMirror 6 is the closest fit and is widely reported to be what Obsidian itself uses. It is built for text with markdown as the source of truth, which is the correct model for a knowledge base whose files should stay portable and greppable.
+`[VERIFIED]` For a markdown-first editor, CodeMirror 6 is the closest fit, and it is what Obsidian itself uses. Obsidian's own developer documentation states it, `obsidian.d.ts` imports `@codemirror/state` and `@codemirror/view`, and the 1.13.0 changelog of 2026-05-28 confirms it is still CodeMirror today. It is built for text with markdown as the source of truth, which is the correct model for a knowledge base whose files should stay portable and greppable.
 
-The alternatives serve a different product. `[SECONDARY]` TipTap sits on ProseMirror and typically takes two to four weeks to integrate; Lexical is lower-level and expects months of engineering for a custom editor product. Both are rich-text-document editors, and choosing one means the document model stops being markdown.
+The alternatives serve a different product. TipTap sits on ProseMirror and Lexical sits lower still, and both are rich-text-document editors whose document model in memory stops being markdown, which means a permanent conversion tax at every save.
+
+**Correction, 2026-07-30.** An earlier draft of this section put TipTap at "two to four weeks" and Lexical at "months." Both figures traced to a vendor marketing comparison, and Lexical's had in fact been taken from ProseMirror's row of that vendor's own table. The methodology also measured the wrong scope, covering a toolbar and mobile UX while excluding the markdown bridge, which is the only cost that matters here. See `EDITOR_DECISION.md` §7 for the corrected figures and for the two other stale claims in this section.
 
 Decision: **CodeMirror 6**, markdown on disk as the source of truth.
 
-`[UNVERIFIED]` Whether CodeMirror 6 handles the mixed-media blocks this product needs, meaning an inline photo or a screenshot embedded in a note, as cleanly as a ProseMirror-based editor would. This is the one place the decision could reverse, and it should be spiked before the editor work is scheduled rather than discovered during it.
+**Resolved 2026-07-30, decision CONFIRMED.** `[VERIFIED]` Whether CodeMirror 6 handles the mixed-media blocks this product needs was spiked, measured, and adversarially re-tested. It does, and the file on disk stays byte-exact markdown because there is no serializer to be wrong: a 183-line adversarial fixture survived load, edit, undo and save with a sha256 match, while the same fixture through a markdown-native tree round trip changed 90 of its 183 lines with no user edits at all.
+
+The full evidence, the concrete costs, and the blind spots are in **`EDITOR_DECISION.md`**. Three things from it belong here, because they change what Phase 6 is:
+
+- `[VERIFIED]` The literal comparison in the original question, "as cleanly as a ProseMirror-based editor would," answers **no**. A ProseMirror atom node has a defined selection model; a CodeMirror block widget is a decoration painted over text, so caret behaviour at the widget boundary has to be hand-built. The spike got this wrong in a way that silently corrupts markdown. Owning that selection state is the real work of Phase 6 and it should be scheduled, not discovered.
+- `[VERIFIED]` The one unmitigated failure mode is the cold dimension cache, which is exactly the first render of a note containing a freshly pasted screenshot. Origami can close this where no other project could, by recording image dimensions at capture time in the ingestion pipeline instead of discovering them at paint time. This is a Phase 3 hook for a Phase 6 problem.
+- `[VERIFIED]` Adopting CodeMirror does not shrink the bundle unless the chat renderer moves too. `@uiw/react-markdown-preview` is a separate direct dependency used by every AI chat message, so an editor-only swap is a net **+154KB gzip** on the startup path.
+
+`[UNVERIFIED]` What remains open is whether media blocks must be **editable in place**, meaning resize, caption, re-crop, re-run OCR, drag to reorder, rather than merely rendered. Rendered is what the brief says and what the spike proves. Editable is the one condition that would reverse this decision, and the answer there would be Milkdown rather than TipTap direct. See `EDITOR_DECISION.md` §9.
 
 On density: the current interface is a research tool built around dense chat and document panes. The target is a reading and writing surface. This is a design workstream in its own right and is deliberately not specified here beyond the constraint that it comes after the port is stable, since redesigning while the runtime is changing underneath means doing it twice.
 
@@ -218,6 +228,8 @@ In the order `ARCHITECTURE_V2.md` §7 sets out: snippets, then Calendar as the f
 
 CodeMirror 6, markdown as source of truth, the interface redesign. After the runtime is stable, not during.
 
+Scope is set by `EDITOR_DECISION.md` §6 and §8, and it is larger than "swap the editor." The two items that carry real risk are the widget-boundary selection model and the feature surface the current library supplies for free, meaning 17 toolbar commands, 23 shortcuts, the live preview pane, KaTeX, and the `$$` auto-expansion handler. Delete the spike rather than promoting it; its value is the measurements, not the code.
+
 ### Phase 7: launch site
 
 §5.
@@ -240,7 +252,7 @@ CodeMirror 6, markdown as source of truth, the interface redesign. After the run
 |---|---|---|---|
 | 1 | Does Full Disk Access follow responsible-process attribution for child processes? | iMessage connector | §3.3. Half answered in Phase 2: the denial is loud, so it is detectable. Inheritance still needs a granted bundle, harness committed as `--tcc-probe` |
 | 2 | How far do quantized `fastembed` vectors diverge from the current ones? | Nothing, once `embedding_model` is recorded | `ARCHITECTURE_V2.md` §5, check in Phase 0 |
-| 3 | Does CodeMirror 6 handle inline mixed media acceptably? | Editor choice | §4, spike before Phase 6 |
+| 3 | ~~Does CodeMirror 6 handle inline mixed media acceptably?~~ **Closed 2026-07-30: yes, decision confirmed.** Successor question: must media blocks be editable in place, or merely rendered? | Nothing. Editable-in-place is the only condition that would reverse the choice | `EDITOR_DECISION.md`, summarised in §4 |
 | 4 | Is the taint rule ergonomically tolerable? | Connector UX | `ARCHITECTURE_V2.md` §3 |
 | 5 | Are Google Takeout photo exports practical at personal scale? | The entire Google Photos story, since Takeout is now the only path | `INTEGRATIONS_RESEARCH.md` §3 |
 | 6 | Can target users create internal Slack apps in their workspaces? | Slack onboarding | `INTEGRATIONS_RESEARCH.md` §2 |
