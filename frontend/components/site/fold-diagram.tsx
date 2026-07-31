@@ -17,6 +17,21 @@ const ARC_FADE = 54;
 // signature gesture by float rounding of the first sampled move.
 const FOLD_CONE_TAN = Math.tan((60 * Math.PI) / 180);
 
+// Each completed fold halves the paper, so the plate keeps a quarter turn and a
+// factor of root two smaller every time. Four is where it stops: the caption
+// leans on the old claim that nothing folds more than seven times, and the
+// sheet gives up one fold early rather than labour the joke.
+const FIGURES = [
+  "fig. 1 · preliminary base",
+  "fig. 2 · folded once",
+  "fig. 3 · folded twice",
+  "fig. 4 · folded three times",
+];
+const MAX_FOLDS = FIGURES.length;
+const STACK_SCALE = Math.SQRT1_2;
+// Shards of the burst. Odd count so the spray never reads as a mirrored pair.
+const SHARDS = 21;
+
 // The two halves are complementary triangles of the same unmodified artwork.
 // The main diagonal, the instruction arc and the centre register dot are NOT in
 // here: the arc straddles the crease and would be torn in two by the clips, and
@@ -83,6 +98,7 @@ export function FoldDiagram({ className }: { className?: string }) {
     const back = stage.querySelector<HTMLElement>("[data-back]");
     const arc = stage.querySelector<SVGGElement>("[data-arc]");
     const hint = stage.parentElement?.querySelector<HTMLElement>("[data-hint]");
+    const fig = stage.parentElement?.querySelector<HTMLElement>("[data-fig]");
     if (!sheet || !flap || !shade || !cast || !back || !arc) {
       return;
     }
@@ -92,6 +108,10 @@ export function FoldDiagram({ className }: { className?: string }) {
     let fold = 0;
     let yaw = 0;
     let pitch = 0;
+    // Completed folds. Drives how small the paper is and which caption it wears.
+    let folds = 0;
+    let stackTimer = 0;
+    let burstTimer = 0;
     let grabU = 0;
     let grabFold = 0;
     let pointerId = -1;
@@ -203,15 +223,85 @@ export function FoldDiagram({ className }: { className?: string }) {
       pointerId = -1;
     };
 
+    // Halving the paper is a layout change, not a rotation, so it is applied to
+    // the stage rather than the sheet: the sheet already owns the turn, and two
+    // transforms on one element would fight over the same property.
+    const applyStack = () => {
+      stage.style.setProperty("--stack-scale", Math.pow(STACK_SCALE, folds).toFixed(4));
+      stage.style.setProperty("--stack-turn", `${folds * -45}deg`);
+      if (fig) {
+        fig.textContent = FIGURES[Math.min(folds, MAX_FOLDS - 1)];
+      }
+    };
+
+    const reset = () => {
+      folds = 0;
+      fold = 0;
+      applyStack();
+      schedule();
+    };
+
+    // Paper that has run out of folds. Shards inherit the plate's own palette so
+    // this reads as the sheet coming apart rather than as a party trick.
+    const burst = () => {
+      if (reduced.matches) {
+        reset();
+        return;
+      }
+      const layer = document.createElement("div");
+      layer.className = "fold-burst";
+      layer.setAttribute("aria-hidden", "true");
+      for (let i = 0; i < SHARDS; i++) {
+        const shard = document.createElement("i");
+        const angle = (i / SHARDS) * Math.PI * 2 + Math.random() * 0.5;
+        const reach = 90 + Math.random() * 130;
+        shard.style.setProperty("--dx", `${(Math.cos(angle) * reach).toFixed(1)}px`);
+        // Biased downward so the shards fall out of the burst rather than
+        // hanging in a ring, which is what makes a radial spray look synthetic.
+        shard.style.setProperty("--dy", `${(Math.sin(angle) * reach * 0.7 + 120).toFixed(1)}px`);
+        shard.style.setProperty("--spin", `${(Math.random() * 720 - 360).toFixed(0)}deg`);
+        shard.style.setProperty("--delay", `${(Math.random() * 90).toFixed(0)}ms`);
+        shard.style.setProperty("--edge", i % 5 === 0 ? "#bc3f1d" : "#d9d0bb");
+        shard.style.setProperty("--size", `${(7 + Math.random() * 11).toFixed(0)}px`);
+        layer.append(shard);
+      }
+      stage.append(layer);
+      stage.classList.add("is-burst");
+      burstTimer = window.setTimeout(() => {
+        layer.remove();
+        stage.classList.remove("is-burst");
+        reset();
+      }, 1150);
+    };
+
     // A sheet is either flat or creased. There is no stable 47 degrees.
     const settle = () => {
       endGesture();
       stage.classList.add("is-settling");
-      fold = fold > 90 ? 180 : 0;
+      const committed = fold > 90;
+      fold = committed ? 180 : 0;
       yaw = 0;
       pitch = 0;
       schedule();
       armSettle(reduced.matches ? 20 : 720);
+      if (!committed) {
+        return;
+      }
+      // Let the fold finish landing before the paper halves under it, otherwise
+      // the shrink cancels the very motion that earned it.
+      stackTimer = window.setTimeout(
+        () => {
+          folds += 1;
+          fold = 0;
+          if (folds >= MAX_FOLDS) {
+            burst();
+            return;
+          }
+          applyStack();
+          schedule();
+        },
+        reduced.matches ? 30 : 640,
+      );
     };
 
     const onDown = (e: PointerEvent) => {
@@ -329,6 +419,9 @@ export function FoldDiagram({ className }: { className?: string }) {
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(settleTimer);
+      window.clearTimeout(stackTimer);
+      window.clearTimeout(burstTimer);
+      stage.querySelector(".fold-burst")?.remove();
       stage.removeEventListener("pointerdown", onDown);
       stage.removeEventListener("pointermove", onMove);
       stage.removeEventListener("pointerenter", onEnter);
@@ -356,7 +449,7 @@ export function FoldDiagram({ className }: { className?: string }) {
         </div>
       </div>
       <p className="mt-3 text-center font-mono text-[11px] tracking-[0.14em] text-subtle">
-        fig. 1 &middot; preliminary base
+        <span data-fig>fig. 1 &middot; preliminary base</span>
         <span data-hint aria-hidden="true" />
       </p>
     </div>

@@ -301,6 +301,57 @@
     position: relative;
     perspective: 2400px;
     touch-action: pan-y;
+    /* Set by the script after each completed fold. Declared here so the rest
+       state is a plain full-size sheet before any script runs. */
+    --stack-scale: 1;
+    --stack-turn: 0deg;
+    transform: rotate(var(--stack-turn)) scale(var(--stack-scale));
+    transition:
+      transform 620ms var(--ease-settle);
+  }
+
+  /* Each fold halves the paper, so the stage takes a quarter turn and a factor
+     of root two every time. Kept off the sheet because the sheet already owns
+     the turn, and two transforms on one element would overwrite each other. */
+  .fold-burst {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .fold-burst i {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--size);
+    height: var(--size);
+    background: #ffffff;
+    border: 1px solid var(--edge);
+    /* A torn corner rather than a square of party confetti. */
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+    animation: shard 1040ms cubic-bezier(0.16, 0.62, 0.36, 1) var(--delay) both;
+  }
+
+  @keyframes shard {
+    from {
+      opacity: 1;
+      transform: translate(-50%, -50%) rotate(0deg);
+    }
+
+    to {
+      opacity: 0;
+      transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--spin));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fold-stage {
+      transition: none;
+    }
+
+    .fold-burst {
+      display: none;
+    }
   }
 
   .fold-stage.is-live {
