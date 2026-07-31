@@ -29,7 +29,10 @@ function Plate() {
       <line x1="310" y1="30" x2="30" y2="310" stroke="#d9d0bb" strokeWidth="1" strokeDasharray="5 7" />
       <line x1="170" y1="30" x2="170" y2="310" stroke="#e7e0d0" strokeWidth="1" strokeDasharray="2 8" />
       <line x1="30" y1="170" x2="310" y2="170" stroke="#e7e0d0" strokeWidth="1" strokeDasharray="2 8" />
-      <line x1="30" y1="170" x2="170" y2="310" stroke="#bc3f1d" strokeWidth="1.25" strokeDasharray="6 6" opacity="0.7" />
+      {/* A preliminary base creases both diagonals and both centre lines. This
+          one is grey rather than accent because the accent marks the fold the
+          sheet actually performs, which is the main diagonal in Marks. */}
+      <line x1="30" y1="170" x2="170" y2="310" stroke="#e7e0d0" strokeWidth="1" strokeDasharray="4 8" />
     </svg>
   );
 }
@@ -39,16 +42,21 @@ function Plate() {
 function Marks() {
   return (
     <svg viewBox="0 0 340 340" fill="none" aria-hidden="true" className="fold-marks">
-      <line x1="30" y1="30" x2="310" y2="310" stroke="#d9d0bb" strokeWidth="1" strokeDasharray="5 7" />
+      {/* The rotation axis, and therefore the crease being made. Accent
+          coloured because it is the line the sheet actually turns about. */}
+      <line x1="30" y1="30" x2="310" y2="310" stroke="#bc3f1d" strokeWidth="1.25" strokeDasharray="6 6" opacity="0.7" />
       {/* The 0.7 stays on each path, exactly as the original artwork had it, so
           the arc rasterises identically at rest. Group opacity would render both
           strokes into one buffer and fade it once, which stops them darkening
           where they overlap at the arrowhead. The group is therefore a plain
           0..1 multiplier that only the fade writes to. */}
       <g data-arc>
-        <path d="M84 132 C 150 70, 230 70, 296 132" stroke="#bc3f1d" strokeWidth="1.25" opacity="0.7" />
+        {/* The free corner is the top right one, and it travels to the bottom
+            left across the crease. The arc bulges up and left so it reads as
+            the sheet lifting over the fold rather than sliding along it. */}
+        <path d="M258 82 Q 105 105 82 258" stroke="#bc3f1d" strokeWidth="1.25" opacity="0.7" />
         <path
-          d="M296 132 l-10.5 -2 m10.5 2 l-3 -10"
+          d="M82 258 l6.2 -9.1 m-6.2 9.1 l-3.3 -10.5"
           stroke="#bc3f1d"
           strokeWidth="1.25"
           strokeLinecap="round"
