@@ -7,6 +7,7 @@ import ChatPage from "./pages/chat";
 import DatabasePage from "./pages/database";
 import DigestPage from "./pages/digest";
 import HomePage from "./pages/home";
+import LibraryPage from "./pages/library";
 
 // Dev-only CodeMirror 6 spike. The lazy() call has to sit inside the DEV
 // branch, not outside it: import.meta.env.DEV is replaced with a literal at
@@ -32,6 +33,7 @@ const ROUTES = [
   { path: "/", element: <HomePage /> },
   { path: "/c/:id", element: <ChatPage /> },
   { path: "/database", element: <DatabasePage /> },
+  { path: "/library", element: <LibraryPage /> },
   { path: "/digest", element: <DigestPage /> },
   ...SPIKE_ROUTES,
 ];
