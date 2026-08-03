@@ -69,13 +69,23 @@ Two things gate it. System audio capture sits behind a macOS permission that an 
 
 ## What to pick up next
 
-In rough order of value over risk.
+The product framing this is aimed at is in [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md): everything you encountered, held locally, organised by how it arrived, with a briefing on top. Read it before picking anything up, because it rules several plausible directions out.
 
-1. **Add an API key and use the app for a day.** It is the cheapest action with the highest information return: it proves the app works, fills the usage ledger with real numbers, and turns the local-generation question from a guess into a measurement.
-2. **Enrol in the Apple Developer Program.** Long lead time, and everything permissioned waits behind it.
-3. **Finish the Full Disk Access probe** once a signed or at least stable bundle exists.
-4. **Phase 6, the editor.** `EDITOR_DECISION.md` confirms CodeMirror 6 and names the real work: caret semantics at widget boundaries, which the spike got wrong in a way that silently corrupts markdown. The interface redesign alongside it is a design workstream, not a specified task.
-5. **The tool loop with its taint gate**, which unblocks cost lever 1 and every MCP item.
+**The next phase is the faceted library plus on-device OCR.** Both are unblocked, both are what the direction rests on, and together they are what makes the product legible rather than a search box.
+
+1. **A library view faceted by source type and modality.** This is the interface the direction describes, and it needs no new data model: `source_type` is on every Item and `modality` on every Segment since Phase 3. No credentials, no permissions, no model calls.
+2. **On-device OCR.** Evaluate the macOS Vision framework first. Today the VLM produces both the caption and the extracted text, which is slow and expensive per image and weak on dense text. Splitting them, so OCR is deterministic and local while the VLM only captions, is the prerequisite for ingesting a photo library at any scale. It also removes any temptation toward a cloud OCR API.
+3. **Cheap retrieval ranking.** A length floor, and demoting lines by how often they recur across the corpus. No model, no new dependency, and it makes screenshots usable rather than noisy. See the retention section of the direction document.
+
+Then, in rough order of value over risk:
+
+4. **Add an API key and use the app for a day.** Still the cheapest action with the highest information return: it proves the app works end to end, fills the usage ledger with real numbers, and turns the local-generation question from a guess into a measurement.
+5. **Enrol in the Apple Developer Program.** Long lead time, and the entire personal half (Photos, Calendar, Reminders, iMessage) waits behind it.
+6. **Finish the Full Disk Access probe** once a stable bundle exists.
+7. **Backlinks.** The piece that turns retrieval into something that reads as a brain rather than a search box.
+8. **The tool loop with its taint gate**, which unblocks cost lever 1 and every MCP item.
+
+Deliberately not next: the editor (Phase 6), the programmable view layer, and MCP. All three are covered in the direction document with the reasoning.
 
 ## Known gaps worth remembering
 

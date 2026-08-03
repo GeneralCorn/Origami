@@ -2,12 +2,13 @@
 
 Two kinds of document live here. The **specs** are the authority on what gets built and why, and are meant to be edited as decisions change. The **research** under `research/` is a dated snapshot of what was true when it was written, and should be corrected rather than quietly rewritten when it turns out to be wrong.
 
-Start with [STATUS.md](STATUS.md). It says where the project actually is, what is blocked, and what to pick up next.
+Start with [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for what this is for, then [STATUS.md](STATUS.md) for where it actually is, what is blocked, and what to pick up next.
 
 ## Specs
 
 | Document | What it decides |
 |---|---|
+| [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) | What the product is, which framings were rejected and why, the constraints that are not negotiable, and what retention actually costs. Read before proposing a direction. |
 | [ELECTRON_PORT_PLAN.md](ELECTRON_PORT_PLAN.md) | The desktop port: the five architectural decisions, the phase sequence, and the open questions. The closest thing to a roadmap. |
 | [ARCHITECTURE_V2.md](ARCHITECTURE_V2.md) | The Item and Segment model, the provenance and taint rule, and the migration order. Section 3 is load-bearing and should be read before any connector work. |
 | [INTEGRATIONS_RESEARCH.md](INTEGRATIONS_RESEARCH.md) | Every candidate data source, with a ship, opt-in, or never verdict and the reason. Section 4 covers the macOS permission model, where a missing declaration fails silently. |
