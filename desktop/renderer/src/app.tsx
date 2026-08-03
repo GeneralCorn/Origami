@@ -16,12 +16,21 @@ import LibraryPage from "./pages/library";
 const SPIKE_ROUTES = import.meta.env.DEV
   ? (() => {
       const SpikeCm6Page = lazy(() => import("./pages/spike-cm6"));
+      const DesignPage = lazy(() => import("./pages/design"));
       return [
         {
           path: "/spike/cm6",
           element: (
             <Suspense fallback={<div className="p-4 text-sm">loading spike…</div>}>
               <SpikeCm6Page />
+            </Suspense>
+          ),
+        },
+        {
+          path: "/design",
+          element: (
+            <Suspense fallback={<div className="p-4 text-sm">loading treatments…</div>}>
+              <DesignPage />
             </Suspense>
           ),
         },

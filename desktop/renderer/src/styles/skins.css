@@ -1,0 +1,152 @@
+/* Interface treatments for the /design comparison route.
+ *
+ * Each block below skins the real library view rather than a mockup, so what
+ * you are comparing is actual data at actual density. To edit a treatment,
+ * edit its block: nothing here is shared between them on purpose, because
+ * shared tokens make two treatments converge as soon as you tune either.
+ *
+ * These rules are UNLAYERED deliberately. Tailwind emits its utilities into a
+ * cascade layer, and unlayered CSS beats layered CSS outright regardless of
+ * specificity, which is the only reliable way to override a utility class
+ * without a specificity war or !important.
+ *
+ * This file is imported only by the dev-only design route, so none of it
+ * reaches a production build.
+ */
+
+/* ── paper ──────────────────────────────────────────────────────────────
+ * The launch site's language brought inside: warm stock, a serif for
+ * headings, hairline rules, no effects at all. Cheapest to render of the
+ * three, because there is nothing to composite beyond text and borders.
+ */
+[data-skin="paper"] {
+  background: #faf8f2;
+  color: #211c16;
+}
+
+[data-skin="paper"] aside {
+  background: #f3efe4;
+  border-right-color: #e7e0d0;
+}
+
+[data-skin="paper"] h1,
+[data-skin="paper"] article span:nth-child(2) {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+}
+
+[data-skin="paper"] h1 {
+  font-size: 1.5rem;
+  font-weight: 500;
+}
+
+[data-skin="paper"] article {
+  border-radius: 0;
+  border-bottom: 1px solid #ece5d6;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+[data-skin="paper"] article:hover {
+  background: #f3efe4;
+}
+
+[data-skin="paper"] aside button[aria-pressed="true"] {
+  background: #e9e0cb;
+}
+
+/* ── frosted ────────────────────────────────────────────────────────────
+ * Semi-glassmorphism, kept honest. Blur appears ONLY on the two surfaces
+ * that never scroll: the facet rail and the header. It is deliberately
+ * absent from the item list.
+ *
+ * The reason is compositing, not taste. backdrop-filter forces the
+ * compositor to re-sample everything behind the element, and behind a
+ * scrolling list that re-sample happens every frame. On a rail that is
+ * fixed, it happens once.
+ */
+[data-skin="frosted"] {
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, #dbe4f5 0%, transparent 60%),
+    radial-gradient(50rem 35rem at 92% 8%, #f0dfe6 0%, transparent 55%),
+    #f4f5f8;
+  color: #1b1d22;
+}
+
+[data-skin="frosted"] aside {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+[data-skin="frosted"] header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(14px) saturate(1.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* No blur here, and this is the load-bearing line of the treatment. */
+[data-skin="frosted"] article {
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 0.7rem;
+  margin-bottom: 0.35rem;
+}
+
+[data-skin="frosted"] article:hover {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+[data-skin="frosted"] aside button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 2px rgba(30, 40, 70, 0.08);
+}
+
+/* ── soft ───────────────────────────────────────────────────────────────
+ * Restrained neumorphism. Rows sit slightly proud of the surface, lit from
+ * the top left.
+ *
+ * Two honest costs. Large soft box-shadows are rasterisation-expensive, so
+ * the shadows here are small and the radius modest. And the idiom is
+ * low-contrast by construction, which is an accessibility problem: the
+ * secondary text below is held at a deliberately higher contrast than the
+ * style would normally use, and it still deserves checking against WCAG
+ * before this treatment is chosen.
+ */
+[data-skin="soft"] {
+  background: #eceef1;
+  color: #2a2e35;
+}
+
+[data-skin="soft"] aside {
+  background: #eceef1;
+  border-right: none;
+  box-shadow: 1px 0 2px rgba(255, 255, 255, 0.9), inset -1px 0 2px rgba(163, 177, 198, 0.25);
+}
+
+[data-skin="soft"] article {
+  background: #eef0f3;
+  border-radius: 0.6rem;
+  margin-bottom: 0.4rem;
+  box-shadow: 3px 3px 6px rgba(163, 177, 198, 0.4), -3px -3px 6px rgba(255, 255, 255, 0.85);
+}
+
+[data-skin="soft"] article:hover {
+  box-shadow: 1px 1px 3px rgba(163, 177, 198, 0.45), -1px -1px 3px rgba(255, 255, 255, 0.9);
+}
+
+[data-skin="soft"] aside button[aria-pressed="true"] {
+  background: #eaecef;
+  box-shadow: inset 2px 2px 4px rgba(163, 177, 198, 0.45), inset -2px -2px 4px rgba(255, 255, 255, 0.9);
+}
+
+/* Neumorphism's own worst habit is fading secondary text into the surface.
+   Held higher than the idiom wants, and still worth measuring. */
+[data-skin="soft"] .opacity-45,
+[data-skin="soft"] .opacity-50,
+[data-skin="soft"] .opacity-40 {
+  opacity: 0.72;
+}
