@@ -14,6 +14,7 @@ Start with [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for what this is for, th
 | [INTEGRATIONS_RESEARCH.md](INTEGRATIONS_RESEARCH.md) | Every candidate data source, with a ship, opt-in, or never verdict and the reason. Section 4 covers the macOS permission model, where a missing declaration fails silently. |
 | [COST_MODEL.md](COST_MODEL.md) | Where the money goes and the four levers against it. Section 3 is the lever list. |
 | [EDITOR_DECISION.md](EDITOR_DECISION.md) | Resolves the CodeMirror 6 question with a measured spike. Read before starting the editor work. |
+| [INTERFACE_DIRECTIONS.md](INTERFACE_DIRECTIONS.md) | Three directions for the desktop interface, with the bundle, image and compositing measurements behind them. Settles glassmorphism, neumorphism and macOS vibrancy, and surveys the component libraries. |
 | [MODEL_STRATEGY.md](MODEL_STRATEGY.md) | Which call sites can leave the Anthropic API and which cannot, why the saving is smaller than it looks, and the migration order. Read before changing anything about models. |
 
 ## Research
