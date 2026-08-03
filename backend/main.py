@@ -30,6 +30,7 @@ from services.schema import SCHEMA_VERSION
 from routes.chat import router as chat_router
 from routes.chats import router as chats_router
 from routes.documents import router as documents_router
+from routes.library import router as library_router
 from routes.notes import router as notes_router
 from routes.upload import router as upload_router
 from routes.screenshots import router as screenshots_router
@@ -111,6 +112,7 @@ app.add_middleware(
 app.include_router(chat_router, prefix="/api")
 app.include_router(chats_router, prefix="/api")
 app.include_router(documents_router, prefix="/api")
+app.include_router(library_router, prefix="/api")
 app.include_router(notes_router, prefix="/api")
 app.include_router(upload_router, prefix="/api")
 app.include_router(screenshots_router, prefix="/api")
