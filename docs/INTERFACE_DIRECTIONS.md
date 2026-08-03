@@ -8,6 +8,16 @@ The interface has to serve [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md): everyth
 
 The brief from the user is three sentences long and all three are load-bearing. The current interface is "too text-heavy". They want to explore "semi-glassmorphism and neumorphism with minimal animations". And the hard priority is "clean but most importantly fast and smooth". Speed is the requirement; the aesthetic has to fit inside it.
 
+### State of play, reconciled 2026-08-03
+
+Work landed on `main` while this was being written, in commit `006f078`, and the document has been reconciled against it rather than left to describe a repository that no longer exists. `[VERIFIED]` by reading the tree:
+
+- `backend/routes/library.py` is merged. The measurements in this document that cite it as being on a branch now refer to `main`.
+- `desktop/renderer/src/components/library/library-view.tsx` exists, with a facet rail and a `/library` route. It is **not virtualised**: line 178 maps over the whole `items` array, and the filter runs client-side over the full corpus. It shows no images.
+- A dev-only `/design` route skins that view four ways, plain, paper, frosted and soft, guarded the same way as the CodeMirror spike so it does not ship.
+
+That is most of stage 1 already built, which is good news for the build order in section 7 and changes nothing in sections 1 to 6. Two notes on the skins. `frosted` already confines blur to the rail and header and bans it behind the list, which is the same rule section 2.1 arrives at independently. `soft` puts neumorphic shadow pairs on tiles, which is the one thing sections 2.2 and 5 both rule out, and the reason is in 2.2: the pair is the tile's only boundary cue and the canonical version of it measures 1.40:1 against a 3:1 requirement.
+
 ---
 
 ## 1. What is actually true today
@@ -459,9 +469,9 @@ Stage one is small enough to try in a day and reverts by deleting files.
 
 **Stage 0, half a day, no direction committed, pure win.** Add the `prefers-reduced-motion` block to `globals.css`. Replace `@uiw/react-markdown-preview` with `react-markdown` plus `remark-gfm` in `components/chat/animated-text.tsx`, keeping `remark-math` and `rehype-katex`, which drops `rehype-raw` and `rehype-prism-plus` because `react-markdown` does not add them. Expect the `.chat-markdown .wmde-markdown` selectors in `globals.css` to need rewriting against the new class names, which is most of the work in this step. Run `npm run build:renderer` and write the new byte count into this document next to the estimate in section 3.4. Upgrade `radix-ui` and the `shadcn` CLI. Replace the two `backdrop-blur-sm` sticky table headers in `database-viewer.tsx` with opaque backgrounds. None of this depends on choosing a direction, and all of it is worth having if the direction is later rejected.
 
-**Stage 1, one day, reversible.** Merge the `/library` endpoint from `claude/faceted-library`, which already exists and already returns items and facets in one response. Add a `/library` route to the four in `app.tsx`. Render the facet rail from the `facets` block and a virtualised grid from `items`, with **placeholder tiles**, no images at all: source-type glyph, title, date, on the paper ground. This is the whole shape of Direction A with the expensive half stubbed, it can be pointed at the real corpus immediately, and reverting is deleting one route entry, one page and one component directory. Nothing existing is touched.
+**Stage 1, mostly done already, half a day of remainder.** The endpoint, the route, the facet rail and the placeholder tiles all landed in `006f078`. What is left is the one thing that makes it survive a corpus: put `@tanstack/react-virtual` under the tile grid so `items.map` at line 178 of `library-view.tsx` stops mounting every record, and move the client-side filter off the render path. Reverting is still a small diff.
 
-The purpose of stage 1 is to answer one question before any more is spent: **does the corpus, laid out this way, look like something worth navigating?** The facet counts will answer the "mostly screenshots or mostly documents" question at the same time.
+The purpose of stage 1 is to answer one question before any more is spent: **does the corpus, laid out this way, look like something worth navigating?** That question is now answerable today, against real data, by opening `/library`. The facet counts answer the "mostly screenshots or mostly documents" question at the same time, and section 6 says what each answer decides.
 
 **Stage 2, thumbnails.** A `services/thumbnails.py` using the Pillow already in the lock file, 320px WebP at q80, written to `ORIGAMI_DATA_DIR/thumbnails/` beside the originals, generated at ingest and backfilled for existing items by a one-shot script. A `GET /api/items/{id}/thumb` endpoint. Then the grid shows real images. Measure the memory of a full-screen scroll before and after and record it, because section 1.2 is the claim this stage is built on and it should be confirmed against the real corpus rather than a synthetic one.
 
