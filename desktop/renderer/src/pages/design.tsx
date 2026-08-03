@@ -25,8 +25,8 @@ const SKINS = [
   },
   {
     id: "soft",
-    name: "Soft",
-    note: "Restrained neumorphism. Soft shadows are rasterisation-expensive, so they are kept small, and the idiom is low-contrast by construction so secondary text is held higher than the style wants.",
+    name: "Soft (fails)",
+    note: "Restrained neumorphism, kept here as the rejected option rather than deleted. The shadow pair is the tile's only boundary cue, and the canonical recipe measures 1.40:1 against the 3:1 that WCAG 1.4.11 requires for exactly that case. It cannot be tuned into compliance, because raising the contrast is the same operation as making it stop looking soft. See INTERFACE_DIRECTIONS.md section 2.2.",
   },
 ] as const;
 
