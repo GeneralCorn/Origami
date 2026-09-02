@@ -3,6 +3,7 @@ import MDEditor from "@uiw/react-md-editor";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { useTheme } from "@/lib/theme";
+import { resolveScreenshotSrc } from "@/lib/api/screenshots";
 import "katex/dist/katex.min.css";
 
 interface MarkdownEditorProps {
@@ -89,6 +90,10 @@ export default function MarkdownEditor({
           previewOptions={{
             remarkPlugins: [remarkMath],
             rehypePlugins: [rehypeKatex],
+            // Collection notes embed screenshots by the relative path the
+            // backend writes; the preview needs the served URL with the
+            // launch token to actually draw them.
+            urlTransform: resolveScreenshotSrc,
           }}
         />
       </div>
