@@ -68,3 +68,21 @@ def test_the_two_are_distinguishable_in_the_assembled_prompt():
 
 def test_provenance_trust_reaches_the_prompt():
     assert "trust: untrusted" in _excerpt_block(1, _CAPTION_HIT)
+
+
+def test_a_screenshot_hit_is_named_by_title_collection_and_engine():
+    block = _excerpt_block(3, {
+        **_OCR_HIT,
+        "title": "Severance episode page",
+        "collection": "shows-to-watch",
+        "ocr_engine": "apple_vision",
+    })
+
+    assert '(screenshot "Severance episode page", filed under shows-to-watch)' in block
+    assert "text read out of an image by apple_vision, verbatim from the source" in block
+
+
+def test_a_hit_without_the_newer_fields_still_renders():
+    """Records written before collections existed carry none of them."""
+    block = _excerpt_block(4, _OCR_HIT)
+    assert block.startswith("[4] shot.png (screenshot) — text read out of an image, verbatim")

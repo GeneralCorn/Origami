@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # included because "who wrote this" is the axis nothing else in this category
 # offers, and it is the one the agent's egress rule keys on. Modality is
 # counted per segment rather than per item, since one item holds several.
-ITEM_FACETS = ("source_type", "trust", "origin")
+ITEM_FACETS = ("source_type", "trust", "origin", "collection")
 EMPTY_FACETS = {name: {} for name in (*ITEM_FACETS, "modality")}
 
 
@@ -72,6 +72,9 @@ async def library():
                 "trust": fields["prov_trust"],
                 "channel": fields["prov_channel"],
                 "tags": meta.get("tags", []),
+                # Where a screenshot was filed. Empty for every other source,
+                # and for screenshots processed before collections existed.
+                "collection": meta.get("collection", ""),
                 "segments": 0,
                 # What kinds of text this Item holds. A screenshot carrying
                 # both reads differently from one carrying only a caption,
@@ -100,7 +103,9 @@ async def library():
     # not date, then by title so the order is stable rather than arbitrary.
     rows.sort(key=lambda r: (r["created_at"] or r["ingested_at"], r["title"]), reverse=True)
 
-    facets = {name: dict(Counter(row[name] for row in rows)) for name in ITEM_FACETS}
+    # The empty string is "not filed anywhere", which is a fact about the
+    # source rather than a bucket worth offering as a filter.
+    facets = {name: dict(Counter(row[name] for row in rows if row[name])) for name in ITEM_FACETS}
     # Summed rather than counted, so this is segments per modality across the
     # corpus and does not agree with the item totals above. That is the honest
     # number: one screenshot contributes one caption and several OCR segments.

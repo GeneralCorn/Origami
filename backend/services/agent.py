@@ -218,13 +218,25 @@ def _excerpt_block(index: int, chunk: dict[str, Any]) -> str:
     the record; only the agent's view of it was dropping them.
     """
     noun = _MODALITY_NOUNS.get(chunk["modality"], chunk["modality"])
+    if chunk["modality"] == "ocr" and chunk.get("ocr_engine"):
+        noun = f"{noun} by {chunk['ocr_engine']}"
     authored = (
         "WRITTEN BY A MODEL about the source, not found in it"
         if chunk["content_source"] == "generated"
         else "verbatim from the source"
     )
+    # A screenshot is named by what it shows and where it was filed, so the
+    # analyzer can say "the Severance episode page" rather than quote a
+    # content hash, and can tell a show from a paper without reading the
+    # text. Both fields are on every segment since the collections work.
+    label = chunk["source_type"]
+    title = chunk.get("title", "")
+    if title and title != chunk["source"]:
+        label += f' "{title}"'
+    if chunk.get("collection"):
+        label += f", filed under {chunk['collection']}"
     return (
-        f"[{index}] {chunk['source']} ({chunk['source_type']}) — {noun}, {authored}; "
+        f"[{index}] {chunk['source']} ({label}) — {noun}, {authored}; "
         f"trust: {chunk['prov_trust']}\n{chunk['text']}"
     )
 

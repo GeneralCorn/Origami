@@ -18,6 +18,7 @@ from services.chroma import hash_bytes
 from services.indexing import SegmentDraft, index_item
 from services.ingest import text_splitter
 from services.ocr import VLM_ENGINE, OcrResult
+from services.rag import invalidate_line_frequency
 from services.schema import Item, data_relative, provenance_for_screenshot
 from services.screen_text import content_lines, derive_title
 from services.text_utils import as_text
@@ -184,4 +185,6 @@ async def index_screenshot(
         "source_app": source_app if source_app and source_app != "unknown" else "",
         "ocr_engine": ocr.engine if ocr else "",
     }
-    return await index_item(item, screenshot_drafts(vision_result, ocr, title=title), extra=extra)
+    written = await index_item(item, screenshot_drafts(vision_result, ocr, title=title), extra=extra)
+    invalidate_line_frequency()
+    return written

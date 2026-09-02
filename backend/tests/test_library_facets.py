@@ -47,7 +47,7 @@ async def test_empty_store_still_names_every_facet(monkeypatch):
     """
     result = await _library(monkeypatch, [])
     assert result == {"items": [], "facets": library.EMPTY_FACETS, "total": 0}
-    assert set(result["facets"]) == {"source_type", "trust", "origin", "modality"}
+    assert set(result["facets"]) == {"source_type", "trust", "origin", "collection", "modality"}
 
 
 async def test_segments_collapse_into_items(monkeypatch):
@@ -111,3 +111,19 @@ async def test_newest_timestamp_wins_across_uneven_segments(monkeypatch):
         [_seg("a", created_at=""), _seg("a", created_at="2026-05-05T00:00:00Z")],
     )
     assert result["items"][0]["created_at"] == "2026-05-05T00:00:00Z"
+
+
+async def test_collections_are_a_facet_and_unfiled_items_are_not_a_bucket(monkeypatch):
+    result = await _library(
+        monkeypatch,
+        [
+            _seg("shot", source_type="screenshot", collection="shows-to-watch"),
+            _seg("shot2", source_type="screenshot", collection="inbox"),
+            _seg("paper"),
+        ],
+    )
+    by_id = {row["file_id"]: row for row in result["items"]}
+    assert by_id["shot"]["collection"] == "shows-to-watch"
+    assert by_id["paper"]["collection"] == ""
+    assert result["facets"]["collection"] == {"shows-to-watch": 1, "inbox": 1}
+    assert "collection" in result["facets"]
