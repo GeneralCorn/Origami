@@ -86,8 +86,13 @@ async def index_item(
     *,
     tags: list[str] | None = None,
     whole_text: str = "",
+    extra: dict | None = None,
 ) -> int:
     """Write one Item's segments to Chroma. Returns the number written.
+
+    `extra` is source-specific metadata denormalised onto every segment
+    (a screenshot's collection and source app, say). It is merged first,
+    so nothing in it can shadow the schema fields or the fixed keys below.
 
     Idempotent by segment id. `upsert` rather than `add` because
     `collection.add` on an id that already exists is a silent no-op in
@@ -147,6 +152,7 @@ async def index_item(
                 ids=[segment_id(item.id, draft.ordinal)],
                 documents=[segment.content],
                 metadatas=[segment_metadata(item, segment, extra={
+                    **(extra or {}),
                     "filename": filename,
                     "original_chunk": draft.content,
                     "tags": item_tags,

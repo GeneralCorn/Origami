@@ -185,14 +185,28 @@ def set_tags(file_id: str, tags: list[str]) -> bool:
     return True
 
 
-def set_title(file_id: str, title: str) -> bool:
-    """Update title on all chunks belonging to a document."""
+def _set_fields(file_id: str, fields: dict) -> bool:
+    """Rewrite metadata fields on every segment of one Item."""
     col = get_collection()
     chunk_ids = col.get(where={"file_id": file_id}, include=[])["ids"]
     if not chunk_ids:
         return False
-    col.update(ids=chunk_ids, metadatas=[{"title": title} for _ in chunk_ids])
+    col.update(ids=chunk_ids, metadatas=[dict(fields) for _ in chunk_ids])
     return True
+
+
+def set_title(file_id: str, title: str) -> bool:
+    """Update title on all chunks belonging to a document."""
+    return _set_fields(file_id, {"title": title})
+
+
+def set_collection(file_id: str, collection_id: str) -> bool:
+    """Move an Item to another collection.
+
+    Denormalised like every other Item field, so the library facet and a
+    metadata pre-filter read it without a join.
+    """
+    return _set_fields(file_id, {"collection": collection_id})
 
 
 def delete_chunks(file_id: str) -> int:
