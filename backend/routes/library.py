@@ -75,6 +75,7 @@ async def library():
                 # Where a screenshot was filed. Empty for every other source,
                 # and for screenshots processed before collections existed.
                 "collection": meta.get("collection", ""),
+                "source_app": meta.get("source_app", ""),
                 "segments": 0,
                 # What kinds of text this Item holds. A screenshot carrying
                 # both reads differently from one carrying only a caption,

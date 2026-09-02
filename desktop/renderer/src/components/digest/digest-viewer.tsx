@@ -20,8 +20,9 @@ import {
   recategorize,
   screenshotUrl,
 } from "@/lib/api/screenshots";
+import { fetchCollections } from "@/lib/api/collections";
 import { tagColor } from "@/lib/utils";
-import type { DigestSummary, PendingScreenshot } from "@/types";
+import type { Collection, DigestSummary, PendingScreenshot } from "@/types";
 
 interface DigestEntry {
   title: string;
@@ -74,18 +75,9 @@ function parseDigestMarkdown(content: string): DigestSection[] {
   return sections;
 }
 
-const CATEGORIES = [
-  "news",
-  "social_media",
-  "code",
-  "documentation",
-  "conversation",
-  "meme",
-  "recipe",
-  "shopping",
-  "finance",
-  "other",
-];
+// Headings a digest files low-confidence entries under: the inbox today,
+// "Needs Review" in digests written before collections existed.
+const REVIEW_HEADINGS = new Set(["Inbox", "Needs Review"]);
 
 export default function DigestViewer() {
   const navigate = useNavigate();
@@ -93,6 +85,7 @@ export default function DigestViewer() {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [sections, setSections] = useState<DigestSection[]>([]);
   const [pending, setPending] = useState<PendingScreenshot[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [processResult, setProcessResult] = useState<string | null>(null);
@@ -123,7 +116,11 @@ export default function DigestViewer() {
   useEffect(() => {
     async function init() {
       setLoading(true);
-      await Promise.all([loadDigests(), loadPending()]);
+      await Promise.all([
+        loadDigests(),
+        loadPending(),
+        fetchCollections().then(setCollections).catch(() => undefined),
+      ]);
       setLoading(false);
     }
     init();
@@ -158,8 +155,8 @@ export default function DigestViewer() {
       const result = await processScreenshots();
       setProcessResult(
         `Processed ${result.processed} screenshot${result.processed !== 1 ? "s" : ""}${
-          result.needs_review > 0 ? `, ${result.needs_review} need review` : ""
-        }`
+          result.needs_review > 0 ? `, ${result.needs_review} in the inbox` : ""
+        }${result.failed > 0 ? `, ${result.failed} failed` : ""}`
       );
       await Promise.all([loadDigests(), loadPending()]);
       // Reload current digest content
@@ -190,8 +187,8 @@ export default function DigestViewer() {
     }
   };
 
-  const needsReviewSection = sections.find((s) => s.category === "Needs Review");
-  const regularSections = sections.filter((s) => s.category !== "Needs Review");
+  const needsReviewSection = sections.find((s) => REVIEW_HEADINGS.has(s.category));
+  const regularSections = sections.filter((s) => !REVIEW_HEADINGS.has(s.category));
 
   return (
     <div className="h-full flex flex-col">
@@ -316,6 +313,7 @@ export default function DigestViewer() {
             {needsReviewSection && needsReviewSection.entries.length > 0 && (
               <NeedsReviewSection
                 entries={needsReviewSection.entries}
+                collections={collections}
                 onRecategorize={handleRecategorize}
               />
             )}
@@ -425,9 +423,11 @@ function EntryCard({
 
 function NeedsReviewSection({
   entries,
+  collections,
   onRecategorize,
 }: {
   entries: DigestEntry[];
+  collections: Collection[];
   onRecategorize: (screenshotName: string, category: string) => void;
 }) {
   return (
@@ -435,7 +435,7 @@ function NeedsReviewSection({
       <div className="flex items-center gap-2 mb-2">
         <AlertCircle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
         <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
-          Needs Review
+          Inbox
         </span>
         <span className="text-[10px] text-amber-600/60 dark:text-amber-400/60">
           {entries.length} item{entries.length !== 1 ? "s" : ""}
@@ -447,6 +447,7 @@ function NeedsReviewSection({
           <ReviewEntry
             key={i}
             entry={entry}
+            collections={collections}
             onRecategorize={onRecategorize}
           />
         ))}
@@ -457,9 +458,11 @@ function NeedsReviewSection({
 
 function ReviewEntry({
   entry,
+  collections,
   onRecategorize,
 }: {
   entry: DigestEntry;
+  collections: Collection[];
   onRecategorize: (screenshotName: string, category: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -488,33 +491,31 @@ function ReviewEntry({
           onClick={() => setOpen(!open)}
           className="flex items-center gap-1 px-2 py-1 text-[10px] rounded border border-border hover:bg-accent transition-colors"
         >
-          <span>Categorize</span>
+          <span>File under</span>
           <ChevronDown className="h-2.5 w-2.5" />
         </button>
         {open && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <div className="absolute right-0 top-full mt-1 z-50 w-36 rounded-md border border-border bg-popover shadow-lg py-1">
-              {CATEGORIES.map((cat) => {
-                const c = tagColor(cat);
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setOpen(false);
-                      onRecategorize(entry.screenshotFilename, cat);
-                    }}
-                    className="flex items-center gap-2 w-full px-3 py-1.5 text-[10px] text-left hover:bg-accent/50 transition-colors"
-                  >
-                    <span
-                      className={`w-2 h-2 rounded-full ${c.swatch}`}
-                    />
-                    <span className="text-foreground">
-                      {cat.replace("_", " ")}
-                    </span>
-                  </button>
-                );
-              })}
+              {collections
+                .filter((collection) => collection.id !== "inbox")
+                .map((collection) => {
+                  const c = tagColor(collection.id);
+                  return (
+                    <button
+                      key={collection.id}
+                      onClick={() => {
+                        setOpen(false);
+                        onRecategorize(entry.screenshotFilename, collection.id);
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-[10px] text-left hover:bg-accent/50 transition-colors"
+                    >
+                      <span className={`w-2 h-2 rounded-full ${c.swatch}`} />
+                      <span className="text-foreground">{collection.name}</span>
+                    </button>
+                  );
+                })}
             </div>
           </>
         )}

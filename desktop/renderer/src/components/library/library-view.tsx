@@ -9,6 +9,7 @@ const FACET_ORDER = [
   { key: "source_type" as const, label: "Source" },
   { key: "trust" as const, label: "Trust" },
   { key: "origin" as const, label: "Origin" },
+  { key: "collection" as const, label: "Collection" },
 ];
 
 type FacetKey = (typeof FACET_ORDER)[number]["key"];
@@ -18,10 +19,20 @@ const EMPTY_SELECTION: Selection = {
   source_type: new Set(),
   trust: new Set(),
   origin: new Set(),
+  collection: new Set(),
 };
 
 function itemValue(item: LibraryItem, key: FacetKey): string {
-  return key === "source_type" ? item.source_type : key === "trust" ? item.trust : item.origin;
+  switch (key) {
+    case "source_type":
+      return item.source_type;
+    case "trust":
+      return item.trust;
+    case "origin":
+      return item.origin;
+    case "collection":
+      return item.collection;
+  }
 }
 
 function formatWhen(item: LibraryItem): string {
