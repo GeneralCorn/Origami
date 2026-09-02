@@ -3,6 +3,7 @@ import { Suspense, lazy } from "react";
 import { ThemeProvider } from "@/lib/theme";
 import { Router } from "@/lib/router";
 
+import CapturePage from "./pages/capture";
 import ChatPage from "./pages/chat";
 import DatabasePage from "./pages/database";
 import DigestPage from "./pages/digest";
@@ -44,6 +45,7 @@ const ROUTES = [
   { path: "/database", element: <DatabasePage /> },
   { path: "/library", element: <LibraryPage /> },
   { path: "/digest", element: <DigestPage /> },
+  { path: "/capture", element: <CapturePage /> },
   ...SPIKE_ROUTES,
 ];
 

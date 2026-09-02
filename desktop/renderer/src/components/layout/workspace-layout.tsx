@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "@/lib/router";
 import { AnimatePresence } from "motion/react";
 import { motion } from "motion/react";
-import { PanelLeft, Database, Calendar, ChevronLeft, Palette, Sun, Moon, Check } from "lucide-react";
+import { PanelLeft, Database, Calendar, ChevronLeft, Palette, Sun, Moon, Check, Images } from "lucide-react";
 import { useTheme, type Theme } from "@/lib/theme";
 import {
   ResizableHandle,
@@ -324,6 +324,14 @@ export default function WorkspaceLayout({ chatId }: WorkspaceLayoutProps) {
           Origami
         </span>
         <div className="ml-auto flex items-center gap-1">
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            onClick={() => navigate("/capture")}
+            className="titlebar-interactive flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent text-muted-foreground transition-colors duration-150"
+            title="Screenshots"
+          >
+            <Images className="h-5 w-5" />
+          </motion.button>
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() => navigate("/digest")}
