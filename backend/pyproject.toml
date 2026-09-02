@@ -18,6 +18,24 @@ dependencies = [
     "python-multipart>=0.0.22",
     "fastembed>=0.5.0",
     "uvicorn>=0.41.0",
+    # Image decoding and downscaling for the screenshot path. Pure-Python
+    # wheels, no OpenCV.
+    "pillow>=11.0",
+    # On-device OCR through the macOS Vision framework. Darwin-only by
+    # marker: the product is a signed macOS app and Vision is the engine
+    # PRODUCT_DIRECTION.md says to evaluate first. Linux and CI resolve the
+    # marker to nothing and fall through to the optional engine below.
+    "pyobjc-framework-Vision>=12.0; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+# Cross-platform OCR fallback for machines without the Vision framework
+# (Linux dev boxes, CI). RapidOCR ships PP-OCRv6 ONNX weights inside the
+# wheel (~32 MB) and pulls opencv-python (~70 MB), which is why it is an
+# extra rather than a core dependency: the packaged macOS app never needs it.
+ocr-fallback = [
+    "rapidocr>=3.9",
+    "pillow-heif>=0.20",
 ]
 
 [dependency-groups]

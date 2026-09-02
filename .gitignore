@@ -45,6 +45,8 @@ backend/usage/
 backend/screenshots/
 backend/digests/
 backend/snippets/
+backend/ocr/
+backend/collections.json
 
 # runtime data (kept tracked temporarily for easy sync)
 # backend/notes/
