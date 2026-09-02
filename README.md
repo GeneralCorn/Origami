@@ -22,6 +22,7 @@ Dark Theme:
 - **PDF ingestion** with a Contextual Retrieval pipeline. Every chunk gets a short LLM-generated blurb situating it in the whole document before embedding, which meaningfully improves retrieval over naive chunking.
 - **Vector search** over ChromaDB, ranking contextualized chunks by cosine similarity.
 - **A LangGraph research agent** that plans, retrieves, reviews its own findings, and loops until it has enough to answer.
+- **Screenshot filing.** Drop iPhone screenshots and each one is read on-device (the macOS Vision framework, or RapidOCR), classified into a collection you define (shows to watch, tech to try, markets to watch, papers to read, ...) without a model call, indexed, and written into that collection's note with the image and the text. A local vision model adds a caption afterwards if Ollama is running.
 - **Markdown notes**, editable alongside the chat and usable as agent context.
 - **Streaming chat** over the Vercel AI SDK protocol, including visible reasoning.
 - **Your corpus stays on disk.** `bge-small-en-v1.5` does the embeddings locally and Chroma stores them on your machine. Nothing is uploaded and there is no account.
@@ -42,6 +43,7 @@ The full planning work lives in [`docs/`](./docs) and is worth reading before co
 | [ARCHITECTURE_V2.md](./docs/ARCHITECTURE_V2.md) | The Item and Segment model, provenance and taint, migration order |
 | [INTEGRATIONS_RESEARCH.md](./docs/INTEGRATIONS_RESEARCH.md) | Per-source research on what can and cannot legitimately be ingested |
 | [COST_MODEL.md](./docs/COST_MODEL.md) | Where token spend actually goes, and the levers that reduce it |
+| [SCREENSHOT_PIPELINE.md](./docs/SCREENSHOT_PIPELINE.md) | On-device OCR, collections, the local classifier, and the two-stage screenshot ingest |
 
 ### Phases
 
@@ -49,7 +51,8 @@ None of the phases below have been built. They are plans.
 
 | Phase | Work | Status |
 |---|---|---|
-| Prerequisite | Land the in-flight screenshot and vision work | In flight |
+| Prerequisite | Land the in-flight screenshot and vision work | Done |
+| Screenshots | On-device OCR, collections filed into notes, OCR-first pipeline, retrieval ranking. See [SCREENSHOT_PIPELINE.md](./docs/SCREENSHOT_PIPELINE.md) | Built |
 | 0 | Portable backend: `ORIGAMI_DATA_DIR`, drop Torch via fastembed, port on stdout | Planned |
 | 1 | Electron shell, Python sidecar, renderer moved from Next.js to Vite | Planned |
 | 2 | Packaging, Developer ID signing, notarization, macOS permissions | Planned |
@@ -107,13 +110,22 @@ npm run dev
 
 This compiles the main process, starts the Vite dev server, and launches Electron against it with hot reload.
 
-### 3. Screenshot vision, optional
+### 3. Screenshot text and vision
+
+Screenshot text is read on-device. On macOS the Vision framework binding is installed by `uv sync` and used automatically. On Linux, or to compare engines, add the fallback:
+
+```bash
+cd backend
+uv sync --extra ocr-fallback   # RapidOCR on ONNX Runtime, weights included
+```
+
+Captions are optional and come from a local vision model:
 
 ```bash
 ollama pull qwen2.5-vl:7b
 ```
 
-Vision is the one model call that runs locally. Everything else in the agent goes to the Anthropic API using the key from step 1.
+Without Ollama a screenshot is still read, classified and filed; it just has no caption. Vision is the one model call that runs locally. Everything else in the agent goes to the Anthropic API using the key from step 1.
 
 ### Other useful scripts
 
@@ -147,6 +159,13 @@ All config is driven by `.env.local` files (git-ignored). Each directory ships a
 | `ORIGAMI_PORT` | `8000` | `0` asks the OS for a free port, which is what the desktop app does |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama endpoint, used only by screenshot vision |
 | `OLLAMA_VLM_MODEL` | `qwen2.5-vl:7b` | The vision model, the one call that runs locally |
+| `OLLAMA_KEEP_ALIVE` | `10m` | How long Ollama keeps the vision model resident between screenshots |
+| `ORIGAMI_OCR_ENGINE` | `auto` | `auto`, `apple_vision`, `rapidocr`, or `off` to let the VLM read the text |
+| `ORIGAMI_OCR_MIN_LINE_CHARS` | `3` | OCR lines shorter than this are kept in the record but never embedded |
+| `ORIGAMI_VLM_MAX_SIDE` | `1280` | Longest side of the image sent to the VLM |
+| `ORIGAMI_VLM_ENRICH` | `1` | Run the caption pass after OCR has filed the screenshot |
+| `ORIGAMI_CLASSIFY_MIN_CONFIDENCE` | `0.35` | Below this the classifier files into the inbox rather than guessing |
+| `ORIGAMI_SCREENSHOT_AUTO_PROCESS` | `1` | Start processing the moment a screenshot is uploaded |
 | `EMBEDDING_MODEL` | `bge-small-en-v1.5` | Embedding model, recorded per segment so a change means an incremental re-embed rather than a full re-ingest |
 | `CHROMA_DIR` | `chroma_data` | Path to ChromaDB storage |
 | `CHROMA_COLLECTION` | `documents` | ChromaDB collection name |
@@ -187,7 +206,7 @@ Origami/
 ├── backend/              # FastAPI + Python 3.13, run as a sidecar
 │   ├── main.py           # App entry, auth gate, routers
 │   ├── config.py         # Centralized env var config, ORIGAMI_DATA_DIR
-│   ├── routes/           # chat, chats, documents, notes, snippets, screenshots, usage
+│   ├── routes/           # chat, chats, collections, documents, library, notes, snippets, screenshots, usage
 │   ├── services/
 │   │   ├── agent.py      # LangGraph research agent
 │   │   ├── llm.py        # The one place a model is called: routing, budget, ledger
@@ -197,7 +216,12 @@ Origami/
 │   │   ├── rag.py        # Dense vector search
 │   │   ├── chroma.py     # Vector store access
 │   │   ├── migrate.py    # Schema migrations and backfill
-│   │   ├── vision.py     # Screenshot description, local via Ollama
+│   │   ├── ocr.py        # On-device text recognition: Apple Vision, RapidOCR
+│   │   ├── screen_text.py        # Status bars and control labels out of the embed text
+│   │   ├── collections.py        # User-defined categories, each backed by a note
+│   │   ├── classify_screenshot.py # Keywords + embedding + VLM vote, no model call
+│   │   ├── screenshot_pipeline.py # OCR, classify, file, then caption
+│   │   ├── vision.py     # Screenshot caption and collection vote, local via Ollama
 │   │   └── embeddings.py # bge-small-en-v1.5 via fastembed
 │   ├── prompts/          # Prompt templates
 │   ├── tests/            # pytest suite
