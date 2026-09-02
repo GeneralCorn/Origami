@@ -24,6 +24,10 @@ export interface LibraryItem {
   trust: "trusted" | "untrusted";
   channel: string;
   tags: string[];
+  /** The collection a screenshot was filed under; empty for other sources. */
+  collection: string;
+  /** The app or site a screenshot shows, when the caption pass named one. */
+  source_app: string;
   segments: number;
   /** Segment counts per modality. One screenshot holds a caption and several OCR runs. */
   modalities: Partial<Record<Modality, number>>;
@@ -33,6 +37,7 @@ export interface LibraryFacets {
   source_type: Record<string, number>;
   trust: Record<string, number>;
   origin: Record<string, number>;
+  collection: Record<string, number>;
   /** Counted per segment, so this does not agree with the item total. */
   modality: Record<string, number>;
 }
