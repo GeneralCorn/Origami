@@ -233,12 +233,13 @@ async def process_screenshot(path: Path, *, enrich: bool | None = None) -> Job:
             ocr = ocr_from_vision(vision)
         job.ocr_engine = ocr.engine if ocr else ""
         text = ocr.text if ocr else ""
+        classifier_text = "\n".join(content_lines(ocr.line_texts)) if ocr else ""
 
         # 2. Classify, locally.
         job.advance(Stage.CLASSIFYING)
         embedder = _embedder_factory()
         classification = await asyncio.to_thread(
-            classify, text, collections, embedder=embedder, vlm_choice=_vlm_vote(vision),
+            classify, classifier_text, collections, embedder=embedder, vlm_choice=_vlm_vote(vision),
         )
 
         # 3. File it. From here on the screenshot is searchable.
@@ -256,7 +257,7 @@ async def process_screenshot(path: Path, *, enrich: bool | None = None) -> Job:
                 async with _vlm_lock:
                     vision = await analyze_screenshot(path, ocr_text=text, collections=collections)
                 refined = await asyncio.to_thread(
-                    classify, text, collections, embedder=embedder, vlm_choice=_vlm_vote(vision),
+                    classify, classifier_text, collections, embedder=embedder, vlm_choice=_vlm_vote(vision),
                 )
                 title = screenshot_title(vision, ocr)
                 await _file(

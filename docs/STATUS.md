@@ -19,9 +19,9 @@ The launch site is live at https://generalcorn.github.io/Origami/.
 | §7 steps 4 and 5 | Done | Vision on the schema with OCR kept as its own segment, snippet capture |
 | 7, launch site | Done | Static export on GitHub Pages, deploys on push to `main` |
 | Library view | Done | The corpus faceted by source, trust, origin, and now collection |
-| Screenshots | Done, Vision adapter unverified on hardware | On-device OCR (Apple Vision, RapidOCR fallback), user-defined collections backed by notes, a no-model-call classifier, OCR-first then caption pipeline, chrome demotion and exact-token recall in retrieval. See `SCREENSHOT_PIPELINE.md` |
+| Screenshots | Done, run on a Mac | On-device OCR (Apple Vision, RapidOCR fallback), user-defined collections backed by notes, a no-model-call classifier, OCR-first then caption pipeline, chrome demotion and exact-token recall in retrieval. See `SCREENSHOT_PIPELINE.md` |
 
-Backend has 365 passing tests. There is no renderer test suite, so any claim that the interface still works rests on manual checks.
+Backend has 376 passing tests. There is no renderer test suite, so any claim that the interface still works rests on manual checks.
 
 ## Blocked, and on what
 
@@ -73,10 +73,10 @@ Two things gate it. System audio capture sits behind a macOS permission that an 
 
 The product framing this is aimed at is in [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md): everything you encountered, held locally, organised by how it arrived, with a briefing on top. Read it before picking anything up, because it rules several plausible directions out.
 
-**The faceted library and on-device OCR have landed.** What remains of that phase is measurement, not code:
+**The faceted library and on-device OCR have landed and run on a Mac.** The Vision adapter reads a phone screenshot in under a fifth of a second, and the classifier files a synthetic labelled set 20/20 with the real embedder (`scripts/render_sample_screenshots.py` makes that set). What remains is measurement on real captures, not code:
 
-1. **Run the Vision adapter on a Mac.** `services/ocr.py`'s `AppleVisionEngine` was written against the API and two reference wrappers and has never executed on hardware. `tests/test_ocr.py` shows the smoke test; the RapidOCR version of it passes.
-2. **Evaluate the screenshot classifier** on a folder of real captures with `scripts/eval_screenshot_classifier.py`. Its weights and floor are reasoned, not measured, and the embedding signal in particular has only ever seen an injected embedder.
+1. **Evaluate the screenshot classifier on real captures** with `scripts/eval_screenshot_classifier.py`. The synthetic set has uniform layouts and perfect OCR, so it says nothing about how the weights hold up against dense, cropped or dark-mode screens. Tune the floor and weights from that confusion matrix, not from the synthetic one.
+2. **Compare Live Text with `VNRecognizeTextRequest`** now that the Vision path runs; see `SCREENSHOT_PIPELINE.md` §8.
 
 Then, in rough order of value over risk:
 

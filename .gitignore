@@ -79,3 +79,6 @@ next-env.d.ts
 .vscode/
 *.swp
 *.swo
+
+# rendered by scripts/render_sample_screenshots.py
+sample-screenshots/

@@ -77,9 +77,11 @@ def _keyword_matches(keyword: str, lowered: str) -> bool:
         return False
     # Symbols and phrases are matched as substrings; single words need a
     # boundary, or "api" fires inside "rapid" and "eth" inside "method".
+    # The boundary allows a plural, because the hint says "season" and the
+    # screen says "2 Seasons".
     if not re.fullmatch(r"[a-z0-9]+", keyword):
         return keyword in lowered
-    return re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", lowered) is not None
+    return re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?:e?s)?(?![a-z0-9])", lowered) is not None
 
 
 def keyword_hits(text: str, keywords: Sequence[str]) -> int:

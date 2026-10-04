@@ -230,3 +230,30 @@ def test_move_with_an_entry_re_renders_and_is_idempotent():
     assert _note_text(get_collection("shows-to-watch").note_id).count("abc123.png") == render_entry(_ENTRY).count("abc123.png")
     assert find_entry_collection("abc123.png") == "shows-to-watch"
     assert find_entry_collection("never-filed.png") is None
+
+
+def test_a_batch_filed_into_one_collection_shares_one_note(monkeypatch):
+    """A batch drop files several screenshots into one collection from as
+    many threads. The first run on a Mac left two of them in duplicate
+    notes nothing linked to: each thread found no note and made one."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    import routes.notes as notes
+
+    real_create = notes.create_note_file
+
+    def slow_create(title):
+        time.sleep(0.02)
+        return real_create(title)
+
+    monkeypatch.setattr(notes, "create_note_file", slow_create)
+    entries = [Entry(screenshot=f"shot-{i}.png", title=f"Shot {i}", captured_at="2026-09-02T00:00:00+00:00") for i in range(12)]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        note_ids = set(pool.map(lambda entry: upsert_entry("markets-to-watch", entry), entries))
+
+    assert note_ids == {get_collection("markets-to-watch").note_id}
+    assert len(list(NOTES_DIR.glob("*.md"))) == 1
+    text = _note_text(note_ids.pop())
+    assert all(ENTRY_OPEN.format(name=entry.screenshot) in text for entry in entries)

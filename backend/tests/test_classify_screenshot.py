@@ -52,6 +52,9 @@ def test_keyword_hits_count_distinct_hints_with_word_boundaries():
     assert keyword_hits("a rapid method", ["api", "eth"]) == 0
     assert keyword_hits("NVDA +3.2%", ["%"]) == 1
     assert keyword_hits("pip install fastembed", ["pip install"]) == 1
+    # Hints are written in the singular; the screen says "2 Seasons".
+    assert keyword_hits("2 Seasons, 28 Episodes, 4,120 citations", ["season", "episode", "citation"]) == 3
+    assert keyword_hits("seasoning the pan", ["season"]) == 0
 
 
 def test_keyword_scores_saturate_at_three_hits():

@@ -212,10 +212,13 @@ def _render_iphone_screenshot(lines: list[str]) -> Path:
     path = SCREENSHOTS_DIR / "rendered-iphone.png"
     image = Image.new("RGB", (1179, 2556), "white")
     draw = ImageDraw.Draw(image)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 44)
-    except OSError:
-        font = ImageFont.load_default(size=44)
+    font = ImageFont.load_default(size=44)
+    for candidate in ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/System/Library/Fonts/Helvetica.ttc"):
+        try:
+            font = ImageFont.truetype(candidate, 44)
+            break
+        except OSError:
+            continue
     y = 120
     for line in lines:
         draw.text((80, y), line, fill="black", font=font)
@@ -224,13 +227,8 @@ def _render_iphone_screenshot(lines: list[str]) -> Path:
     return path
 
 
-def test_rapidocr_reads_a_rendered_screenshot_in_order():
-    pytest.importorskip("rapidocr")
-    path = _render_iphone_screenshot(["9:41", "Severance", "Season 2, Episode 3", "NVDA $875.40 +3.2%"])
-
-    result = RapidOcrEngine().recognize(path)
-
-    assert result.engine == "rapidocr"
+def _assert_reads_in_order(result, engine_name: str) -> None:
+    assert result.engine == engine_name
     assert result.width == 1179 and result.height == 2556
     texts = result.line_texts
     assert texts.index("Severance") < texts.index("Season 2, Episode 3")
@@ -240,3 +238,19 @@ def test_rapidocr_reads_a_rendered_screenshot_in_order():
     # Boxes are normalised with the origin at the top left: the clock is
     # the first thing on the screen.
     assert result.lines[0].box[1] < result.lines[-1].box[1]
+
+
+def test_rapidocr_reads_a_rendered_screenshot_in_order():
+    pytest.importorskip("rapidocr")
+    path = _render_iphone_screenshot(["9:41", "Severance", "Season 2, Episode 3", "NVDA $875.40 +3.2%"])
+
+    _assert_reads_in_order(RapidOcrEngine().recognize(path), "rapidocr")
+
+
+def test_apple_vision_reads_a_rendered_screenshot_in_order():
+    """Vision reports boxes with a bottom-left origin; the adapter flips them."""
+    if not AppleVisionEngine.available():
+        pytest.skip("the Vision framework binding is macOS only")
+    path = _render_iphone_screenshot(["9:41", "Severance", "Season 2, Episode 3", "NVDA $875.40 +3.2%"])
+
+    _assert_reads_in_order(AppleVisionEngine().recognize(path), "apple_vision")

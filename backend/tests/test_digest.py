@@ -102,3 +102,18 @@ def test_remove_drops_the_entry_wherever_it_is():
     assert remove_entry("a.png") is True
     assert "a.png" not in get_digest("2026-W35")
     assert remove_entry("a.png") is False
+
+
+def test_a_batch_appended_at_once_loses_nothing():
+    """Each append reads, edits and rewrites the week's file; a batch drop
+    makes a dozen of them at the same moment."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    names = [f"shot-{i}.png" for i in range(12)]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda name: append_to_digest(screenshot_filename=name, title=name, collection_id="tech-to-try", week="2026-W35"), names))
+
+    content = get_digest("2026-W35")
+    assert all(name in content for name in names)
+    assert content.count("## Tech to try") == 1

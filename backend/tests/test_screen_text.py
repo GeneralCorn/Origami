@@ -30,7 +30,12 @@ def test_control_labels_are_chrome(line):
     assert is_chrome(line)
 
 
-@pytest.mark.parametrize("line", ["Share this recipe with a friend", "Back to the Future", "Play it again, Sam"])
+@pytest.mark.parametrize("line", ["‹ Back", "< Back", "« Settings", "‹Search Results", "← All Inboxes"])
+def test_the_back_control_is_chrome_however_the_chevron_was_read(line):
+    assert is_chrome(line)
+
+
+@pytest.mark.parametrize("line", ["Share this recipe with a friend", "Back to the Future", "Play it again, Sam", "«Bonjour le monde»", "< 3 min read time"])
 def test_sentences_containing_control_words_are_content(line):
     assert not is_chrome(line)
 

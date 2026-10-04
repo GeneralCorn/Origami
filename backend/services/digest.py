@@ -8,6 +8,7 @@ survives as the record of screenshots processed before the store did.
 
 import logging
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 # The heading the pre-collections pipeline used for low-confidence entries.
 # Still read, never written.
 LEGACY_REVIEW_HEADING = "Needs Review"
+
+# Every write is a read, an edit and a write of one week's file, and a
+# batch drop makes several of them at the same moment.
+_lock = threading.Lock()
 
 
 def _current_week() -> str:
@@ -104,13 +109,13 @@ def append_to_digest(
     Idempotent by screenshot filename, so the caption pass can rewrite the
     line the OCR pass wrote a few seconds earlier. Returns the week.
     """
-    path = _ensure_digest(week)
     week = week or _current_week()
-    content = path.read_text(encoding="utf-8")
-    content, _ = _cut_entry(content, screenshot_filename)
     heading = heading_for(collection_id)
     entry = _entry_line(title, source_app, description, screenshot_filename)
-    path.write_text(_insert_under(content, heading, entry), encoding="utf-8")
+    with _lock:
+        path = _ensure_digest(week)
+        content, _ = _cut_entry(path.read_text(encoding="utf-8"), screenshot_filename)
+        path.write_text(_insert_under(content, heading, entry), encoding="utf-8")
     logger.info("Digest %s: %s under '%s'", week, screenshot_filename, heading)
     return week
 
@@ -219,11 +224,12 @@ def move_entry(week: str | None, screenshot_name: str, new_collection_id: str) -
     path = _digest_path(week)
     if not path.exists():
         return False
-    content = path.read_text(encoding="utf-8")
-    content, entry = _cut_entry(content, screenshot_name)
-    if entry is None:
-        return False
-    path.write_text(_insert_under(content, heading_for(new_collection_id), entry), encoding="utf-8")
+    heading = heading_for(new_collection_id)
+    with _lock:
+        content, entry = _cut_entry(path.read_text(encoding="utf-8"), screenshot_name)
+        if entry is None:
+            return False
+        path.write_text(_insert_under(content, heading, entry), encoding="utf-8")
     return True
 
 
@@ -233,8 +239,9 @@ def remove_entry(screenshot_name: str) -> bool:
     if not week:
         return False
     path = _digest_path(week)
-    content, entry = _cut_entry(path.read_text(encoding="utf-8"), screenshot_name)
-    if entry is None:
-        return False
-    path.write_text(content, encoding="utf-8")
+    with _lock:
+        content, entry = _cut_entry(path.read_text(encoding="utf-8"), screenshot_name)
+        if entry is None:
+            return False
+        path.write_text(content, encoding="utf-8")
     return True

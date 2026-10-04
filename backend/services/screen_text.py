@@ -74,10 +74,15 @@ def is_status_bar(line: str) -> bool:
     return all(_is_status_token(token) for token in stripped.split())
 
 
+# The back control at the top of most screens: a chevron, which OCR reads
+# as "‹", "<" or "«", then "Back" or the name of the previous screen.
+_BACK_CONTROL_RE = re.compile(r"^[‹«<←]\s*\S+(\s+\S+)?$")
+
+
 def is_chrome(line: str) -> bool:
-    """A control label or an icon read as punctuation."""
+    """A control label, the back control, or an icon read as punctuation."""
     stripped = line.strip()
-    if not stripped or _GLYPHS_ONLY_RE.match(stripped):
+    if not stripped or _GLYPHS_ONLY_RE.match(stripped) or _BACK_CONTROL_RE.match(stripped):
         return True
     return stripped.lower().rstrip(".:›>") in CHROME_WORDS
 

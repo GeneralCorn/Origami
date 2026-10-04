@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from services import ocr as ocr_service  # noqa: E402
 from services.classify_screenshot import classify, default_embedder  # noqa: E402
 from services.collections import INBOX_ID, list_collections  # noqa: E402
+from services.screen_text import content_lines  # noqa: E402
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".heic", ".heif"}
 
@@ -61,7 +62,8 @@ def main() -> int:
             continue
         for image in sorted(p for p in folder.iterdir() if p.suffix.lower() in IMAGE_SUFFIXES):
             result = engine.recognize(image)
-            verdict = classify(result.text, collections, embedder=embedder, min_confidence=args.floor)
+            text = "\n".join(content_lines(result.line_texts))
+            verdict = classify(text, collections, embedder=embedder, min_confidence=args.floor)
             confusion[expected][verdict.collection_id] += 1
             total += 1
             if verdict.collection_id != expected:

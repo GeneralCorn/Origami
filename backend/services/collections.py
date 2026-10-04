@@ -328,14 +328,21 @@ def ensure_note(collection: Collection) -> str:
     Lazy so that a default collection the user never fills does not litter
     the notes list with empty files. If the user deleted the note, a new
     one is made rather than resurrecting the old id.
-    """
-    if collection.note_id and _note_path(collection.note_id).exists():
-        return collection.note_id
-    from routes.notes import create_note_file
 
-    created = create_note_file(collection.name)
-    update_collection(collection.id, note_id=created["id"])
-    return created["id"]
+    Under the lock, and re-read there: a batch drop files several
+    screenshots into one collection at once, and without it each of them
+    created a note, the last id written won, and the others' entries sat
+    in duplicate notes nothing linked to.
+    """
+    with _lock:
+        current = get_collection(collection.id) or collection
+        if current.note_id and _note_path(current.note_id).exists():
+            return current.note_id
+        from routes.notes import create_note_file
+
+        created = create_note_file(current.name)
+        update_collection(current.id, note_id=created["id"])
+        return created["id"]
 
 
 def note_for(collection_id: str) -> str:
@@ -422,19 +429,22 @@ def upsert_entry(collection_id: str, entry: Entry) -> str:
     """Write the entry into the collection's note, replacing an existing one.
 
     Idempotent by screenshot, so the caption pass can rewrite the block a
-    fast OCR-only pass already appended. Returns the note id.
+    fast OCR-only pass already appended. Returns the note id. The read,
+    edit and write happen under the lock because a batch drop files
+    several entries into one note at the same time.
     """
-    collection = get_collection(collection_id) or inbox()
-    note_id = ensure_note(collection)
-    path = _note_path(note_id)
-    content = path.read_text(encoding="utf-8") if path.exists() else f"# {collection.name}\n\n"
-    block = render_entry(entry)
-    span = _entry_span(content, entry.screenshot)
-    if span:
-        content = content[: span[0]] + block + content[span[1]:]
-    else:
-        content = content.rstrip("\n") + "\n\n" + block + "\n"
-    path.write_text(_tidy(content), encoding="utf-8")
+    with _lock:
+        collection = get_collection(collection_id) or inbox()
+        note_id = ensure_note(collection)
+        path = _note_path(note_id)
+        content = path.read_text(encoding="utf-8") if path.exists() else f"# {collection.name}\n\n"
+        block = render_entry(entry)
+        span = _entry_span(content, entry.screenshot)
+        if span:
+            content = content[: span[0]] + block + content[span[1]:]
+        else:
+            content = content.rstrip("\n") + "\n\n" + block + "\n"
+        path.write_text(_tidy(content), encoding="utf-8")
     logger.info("Filed %s under %s", entry.screenshot, collection.id)
     return note_id
 
@@ -444,12 +454,13 @@ def remove_entry(note_id: str, screenshot: str) -> str | None:
     path = _note_path(note_id)
     if not note_id or not path.exists():
         return None
-    content = path.read_text(encoding="utf-8")
-    span = _entry_span(content, screenshot)
-    if not span:
-        return None
-    block = content[span[0]:span[1]]
-    path.write_text(_tidy(content[: span[0]] + content[span[1]:]), encoding="utf-8")
+    with _lock:
+        content = path.read_text(encoding="utf-8")
+        span = _entry_span(content, screenshot)
+        if not span:
+            return None
+        block = content[span[0]:span[1]]
+        path.write_text(_tidy(content[: span[0]] + content[span[1]:]), encoding="utf-8")
     return block
 
 
@@ -470,22 +481,23 @@ def move_entry(screenshot: str, to_collection_id: str, entry: Entry | None = Non
     With an Entry the block is re-rendered; without one the existing block
     is carried over verbatim, edits and all. Returns the destination note id.
     """
-    destination = get_collection(to_collection_id) or inbox()
-    block: str | None = None
-    for collection in _read():
-        if collection.id == destination.id or not collection.note_id:
-            continue
-        found = remove_entry(collection.note_id, screenshot)
-        if found is not None:
-            block = found
-    if entry is not None:
-        return upsert_entry(destination.id, entry)
-    note_id = ensure_note(destination)
-    path = _note_path(note_id)
-    content = path.read_text(encoding="utf-8")
-    if _entry_span(content, screenshot):
+    with _lock:
+        destination = get_collection(to_collection_id) or inbox()
+        block: str | None = None
+        for collection in _read():
+            if collection.id == destination.id or not collection.note_id:
+                continue
+            found = remove_entry(collection.note_id, screenshot)
+            if found is not None:
+                block = found
+        if entry is not None:
+            return upsert_entry(destination.id, entry)
+        note_id = ensure_note(destination)
+        path = _note_path(note_id)
+        content = path.read_text(encoding="utf-8")
+        if _entry_span(content, screenshot):
+            return note_id
+        if block is None:
+            return note_id
+        path.write_text(_tidy(content.rstrip("\n") + "\n\n" + block + "\n"), encoding="utf-8")
         return note_id
-    if block is None:
-        return note_id
-    path.write_text(_tidy(content.rstrip("\n") + "\n\n" + block + "\n"), encoding="utf-8")
-    return note_id

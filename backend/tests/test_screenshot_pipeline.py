@@ -140,6 +140,20 @@ async def test_unplaceable_text_lands_in_the_inbox_not_a_guess(fake_collection, 
     assert "Mark and Helly" in _note(INBOX_ID)
 
 
+async def test_chrome_never_reaches_the_classifier_or_the_title(fake_collection, ollama_down):
+    """"100%" in the status bar is a markets keyword and "Library" in the tab
+    bar is a tech keyword; a screen that is nothing but chrome must score
+    nothing, and its title must not be the back control."""
+    ocr_service.override_engine(FakeOcr(("9:41", "5G 100%", "‹ Back", "Home", "Search", "Library", "Profile")))
+
+    job = await process_screenshot(_shot())
+
+    assert job.stage == Stage.DONE
+    assert job.collection == INBOX_ID
+    assert job.method == "fallback"
+    assert job.title == "Untitled Screenshot"
+
+
 # ── No way to read it ─────────────────────────────────────────────
 
 

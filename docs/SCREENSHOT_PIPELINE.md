@@ -1,7 +1,7 @@
 # Screenshot pipeline: on-device OCR, collections, and the two-stage ingest
 
 **Date:** 2026-09-02
-**Status:** Built. 365 backend tests pass. The Apple Vision adapter has not yet run on a Mac; see §8.
+**Status:** Built and run on a Mac. 376 backend tests pass. The Vision adapter and the classifier's embedding signal have both been measured, on a synthetic set for the classifier; see §7 and §8.
 **Reads with:** `PRODUCT_DIRECTION.md` for the constraints this obeys, `ARCHITECTURE_V2.md` §2 for the Item and Segment shape it writes, `COST_MODEL.md` §3 for why nothing here calls Anthropic.
 
 ---
@@ -28,7 +28,7 @@ The prerequisite branch shipped a working screenshot path: one Ollama call to `q
 
 | Engine | Platform | Weights | Status | Notes |
 |---|---|---|---|---|
-| `apple_vision` | macOS | in the OS | `[UNVERIFIED]` on hardware | `VNRecognizeTextRequest` via `pyobjc-framework-Vision` 12.2.2 (Python 3.13 wheels exist `[VERIFIED]`, PyPI). Accurate level, language correction, automatic language detection where the OS offers it. Written against Apple's API and the ocrmac and RhetTbull wrappers `[SECONDARY]`. Darwin-only dependency marker, so Linux and CI resolve it to nothing. |
+| `apple_vision` | macOS | in the OS | `[VERIFIED]` on macOS 26, Apple silicon | `VNRecognizeTextRequest` via `pyobjc-framework-Vision` 12.2.2. Accurate level, language correction, automatic language detection where the OS offers it. Written against Apple's API and the ocrmac and RhetTbull wrappers, then run: a 1179×2556 render reads in 0.17 s median (0.56 s on the first call) at confidence 1.0, every line correct and in order, boxes flipped to a top-left origin. Agrees with RapidOCR line for line on the sample set. Darwin-only dependency marker, so Linux and CI resolve it to nothing. |
 | `rapidocr` | any | 32 MB bundled in the wheel | `[VERIFIED]` here | RapidOCR 3.9.2 on ONNX Runtime, PP-OCRv6 det/rec/cls. Measured 2.1 s on a 1179×2556 render at 4 CPU cores, every line correct, mean confidence 0.98; 0.3 s model load on first call. Pulls `opencv-python` (70 MB), which is why it is the `ocr-fallback` extra rather than a core dependency: the packaged macOS app never needs it. |
 | `vlm` | any with Ollama | 6 GB, out of band | existing | The pre-OCR path. Used only when no engine is installed. Recorded as engine `vlm` with confidence 0, because the source reports none. |
 
@@ -60,6 +60,8 @@ Each collection's note is an ordinary file in `NOTES_DIR`, created on first use 
 
 The weekly digest survives as the chronological view, headed by collection names instead of the old closed list, and still reads pre-collections digests (their "Needs Review" heading maps to the inbox).
 
+Note and digest writes are serialised under a lock. Every one of them is a read, an edit and a write of a whole file, and a batch drop makes several for the same collection within a second. The first run on a Mac filed twenty screenshots at once and left two of them in duplicate notes nothing linked to: two threads each found the collection without a note, each created one, and the last id written won. `tests/test_collections.py` and `tests/test_digest.py` now file a dozen entries from eight threads and check that one note holds all of them.
+
 ### 3.4 The classifier spends no model calls
 
 `services/classify_screenshot.py` combines three signals, each already on the machine:
@@ -72,7 +74,9 @@ The weekly digest survives as the chronological view, headed by collection names
 
 Confidence is the winner's score minus half the runner-up's, so two collections scoring alike read as uncertainty. Below `ORIGAMI_CLASSIFY_MIN_CONFIDENCE` (0.35) the screenshot files into the inbox. In practice: two keyword hits, or one decisive embedding, or the VLM alone, is enough; one stray keyword is not.
 
-`[UNVERIFIED]` The embedding signal has been tested only with an injected embedder. The build sandbox could not download the bge-small weights (Hugging Face is blocked by its egress proxy), so the softmax temperature and the 0.45 weight rest on the documented behaviour of bge-small cosine ranges `[SECONDARY]` rather than on screenshots. `scripts/eval_screenshot_classifier.py` runs OCR and the classifier over a folder-per-collection of real screenshots and prints a confusion matrix; run it before tuning anything.
+The classifier reads the same lines the embedder does, with the status bar, the back control and the tab bar dropped by `services/screen_text.py`. The first run on a Mac showed why: the battery indicator's "100%" is a markets keyword and a tab bar's "Library" is a tech keyword, so every screenshot handed those two collections a third of a keyword score before anything on the screen was read, and the tie penalty then took half of it back off every confidence. Single-word keywords also accept a plural, because the hint says "season" and the screen says "2 Seasons".
+
+`[VERIFIED]` on a synthetic set, `[UNVERIFIED]` on real captures. The bge-small weights download in a few seconds on a Mac, and `scripts/render_sample_screenshots.py` renders twenty labelled phone screens (three per collection, two for the inbox) that `scripts/eval_screenshot_classifier.py` then scores. With the real embedder the set files 20/20; keywords alone file 16/20, with the three "shows to watch" screens falling to the inbox on a single hit each, which is the case the embedding signal was added for. Nothing was filed into a wrong collection in either mode. The softmax at 0.02 behaves as intended: a clear screen puts 0.87 to 1.0 on one collection, and a paper abstract about language models splits 0.30/0.29/0.28 across papers, tech and markets, which the floor reads as the near tie it is. The set is uniform and its OCR is perfect, so it validates the arithmetic and the wiring, not the weights; tune those from real screenshots and their confusion matrix, not from this one.
 
 Why not a Haiku call per screenshot: `PRODUCT_DIRECTION.md` rules out per-item model calls at ingest, and `COST_MODEL.md` §3 is where the reasoning lives. A local text-only classifier through Ollama was also considered and rejected for now: it would put a second model load between the drop and the note, and the VLM already votes when it runs.
 
@@ -139,21 +143,20 @@ Install: the Vision framework binding comes with `uv sync` on macOS. Elsewhere, 
 
 | Step | Measured | Where |
 |---|---|---|
-| RapidOCR, 1179×2556 render | 2.1 s (0.3 s first-call load) | this sandbox, 4 cores, `[VERIFIED]` |
-| Apple Vision, same size | not measured | expected well under a second on Apple silicon `[SECONDARY]` |
+| Apple Vision, 1179×2556 render, 12 to 18 lines | 0.17 s median over twenty screens; 0.42 to 0.56 s on the first call | Apple silicon, macOS 26 `[VERIFIED]` |
+| RapidOCR, same render | 0.69 s on Apple silicon; 2.1 s (0.3 s first-call load) in the build sandbox on 4 cores | `[VERIFIED]` |
 | classify, keywords | < 1 ms | `[VERIFIED]` |
-| classify, embedding | one bge-small forward pass, tens of ms | `[UNVERIFIED]` here, model not downloadable |
-| VLM caption, `qwen2.5-vl:7b` | not measured | 10–30 s on 16 GB Apple silicon `[SECONDARY]` |
+| classify, embedding | about 10 ms warm; 6.6 s on the first call, which loads the model and on a fresh machine downloads it | Apple silicon `[VERIFIED]` |
+| VLM caption, `qwen2.5-vl:7b` | not measured; the model was not pulled on the test machine | 10–30 s on 16 GB Apple silicon `[SECONDARY]` |
 
 ## 8. What is not done
 
-1. **Run the Vision adapter on a Mac.** `tests/test_ocr.py` has the shape of the smoke test (render, recognise, assert order and boxes); the RapidOCR version of it passes here. Until `AppleVisionEngine.recognize` has run once on hardware, treat `auto` as `rapidocr` in practice and expect to touch `performRequests_error_`'s return shape or `topCandidates_`.
-2. **Evaluate the classifier on real screenshots** with `scripts/eval_screenshot_classifier.py`, then tune the weights, temperature and floor. The defaults are reasoned, not measured.
-3. **HEIC** decodes only with the `ocr-fallback` extra (pillow-heif). iPhone screenshots are PNG, so this only matters for photos.
-4. **Scanned PDFs.** The OCR engine could give PyMuPDF's empty pages text. Not wired.
-5. **Photos via PhotoKit** (`INTEGRATIONS_RESEARCH.md`) would land on exactly this pipeline: Item per photo, OCR and caption segments, a collection. It waits on signing, not on this code.
-6. **An agent action to file a screenshot** ("put this under papers") is a small route call the tool loop could make once one exists.
-7. **Live Text** (`VKCImageAnalyzer`) reads some layouts better than `VNRecognizeTextRequest` on Sonoma+. Worth a comparison once the Vision path runs.
+1. **Evaluate the classifier on real screenshots** with `scripts/eval_screenshot_classifier.py`, then tune the weights, temperature and floor. The synthetic set in `scripts/render_sample_screenshots.py` files 20/20, but its layouts are uniform and its OCR is perfect; dense, cropped and dark-mode captures are what the defaults have not seen.
+2. **HEIC** decodes only with the `ocr-fallback` extra (pillow-heif). iPhone screenshots are PNG, so this only matters for photos.
+3. **Scanned PDFs.** The OCR engine could give PyMuPDF's empty pages text. Not wired.
+4. **Photos via PhotoKit** (`INTEGRATIONS_RESEARCH.md`) would land on exactly this pipeline: Item per photo, OCR and caption segments, a collection. It waits on signing, not on this code.
+5. **An agent action to file a screenshot** ("put this under papers") is a small route call the tool loop could make once one exists.
+6. **Live Text** (`VKCImageAnalyzer`) reads some layouts better than `VNRecognizeTextRequest` on Sonoma+. The Vision path runs now, so the comparison is unblocked.
 
 ## 9. Sources
 
