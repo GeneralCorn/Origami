@@ -16,6 +16,7 @@ Start with [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md) for what this is for, th
 | [EDITOR_DECISION.md](EDITOR_DECISION.md) | Resolves the CodeMirror 6 question with a measured spike. Read before starting the editor work. |
 | [INTERFACE_DIRECTIONS.md](INTERFACE_DIRECTIONS.md) | Three directions for the desktop interface, with the bundle, image and compositing measurements behind them. Settles glassmorphism, neumorphism and macOS vibrancy, and surveys the component libraries. |
 | [MODEL_STRATEGY.md](MODEL_STRATEGY.md) | Which call sites can leave the Anthropic API and which cannot, why the saving is smaller than it looks, and the migration order. Read before changing anything about models. |
+| [SCREENSHOT_PIPELINE.md](SCREENSHOT_PIPELINE.md) | How a dropped screenshot becomes a filed, searchable note entry: on-device OCR engines, the collections model, the local classifier, the two-stage ingest, and the retrieval changes. Read before touching anything under `services/ocr.py`, `collections.py` or `screenshot_pipeline.py`. |
 
 ## Research
 

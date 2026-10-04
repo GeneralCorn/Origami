@@ -1,6 +1,6 @@
 # Status
 
-Last updated 2026-07-30.
+Last updated 2026-09-02.
 
 The port has happened. Origami is a desktop application that starts its own backend, packages into a DMG with a Python runtime inside, and stores everything under one schema with provenance on every write. What it cannot yet do is prove itself end to end, because no chat turn has ever run against a live model, and it cannot hold a macOS permission, because there is no signing identity.
 
@@ -18,8 +18,10 @@ The launch site is live at https://generalcorn.github.io/Origami/.
 | 4, cost controls | Done | Usage ledger, one model chokepoint, loop bounds, routing, background-context rule. Lever 1 blocked, see below |
 | §7 steps 4 and 5 | Done | Vision on the schema with OCR kept as its own segment, snippet capture |
 | 7, launch site | Done | Static export on GitHub Pages, deploys on push to `main` |
+| Library view | Done | The corpus faceted by source, trust, origin, and now collection |
+| Screenshots | Done, run on a Mac | On-device OCR (Apple Vision, RapidOCR fallback), user-defined collections backed by notes, a no-model-call classifier, OCR-first then caption pipeline, chrome demotion and exact-token recall in retrieval. See `SCREENSHOT_PIPELINE.md` |
 
-Backend has 212 passing tests. There is no renderer test suite, so any claim that the interface still works rests on manual checks.
+Backend has 376 passing tests. There is no renderer test suite, so any claim that the interface still works rests on manual checks.
 
 ## Blocked, and on what
 
@@ -71,11 +73,10 @@ Two things gate it. System audio capture sits behind a macOS permission that an 
 
 The product framing this is aimed at is in [PRODUCT_DIRECTION.md](PRODUCT_DIRECTION.md): everything you encountered, held locally, organised by how it arrived, with a briefing on top. Read it before picking anything up, because it rules several plausible directions out.
 
-**The next phase is the faceted library plus on-device OCR.** Both are unblocked, both are what the direction rests on, and together they are what makes the product legible rather than a search box.
+**The faceted library and on-device OCR have landed and run on a Mac.** The Vision adapter reads a phone screenshot in under a fifth of a second, and the classifier files a synthetic labelled set 20/20 with the real embedder (`scripts/render_sample_screenshots.py` makes that set). What remains is measurement on real captures, not code:
 
-1. **A library view faceted by source type and modality.** This is the interface the direction describes, and it needs no new data model: `source_type` is on every Item and `modality` on every Segment since Phase 3. No credentials, no permissions, no model calls.
-2. **On-device OCR.** Evaluate the macOS Vision framework first. Today the VLM produces both the caption and the extracted text, which is slow and expensive per image and weak on dense text. Splitting them, so OCR is deterministic and local while the VLM only captions, is the prerequisite for ingesting a photo library at any scale. It also removes any temptation toward a cloud OCR API.
-3. **Cheap retrieval ranking.** A length floor, and demoting lines by how often they recur across the corpus. No model, no new dependency, and it makes screenshots usable rather than noisy. See the retention section of the direction document.
+1. **Evaluate the screenshot classifier on real captures** with `scripts/eval_screenshot_classifier.py`. The synthetic set has uniform layouts and perfect OCR, so it says nothing about how the weights hold up against dense, cropped or dark-mode screens. Tune the floor and weights from that confusion matrix, not from the synthetic one.
+2. **Compare Live Text with `VNRecognizeTextRequest`** now that the Vision path runs; see `SCREENSHOT_PIPELINE.md` §8.
 
 Then, in rough order of value over risk:
 

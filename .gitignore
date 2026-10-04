@@ -45,6 +45,8 @@ backend/usage/
 backend/screenshots/
 backend/digests/
 backend/snippets/
+backend/ocr/
+backend/collections.json
 
 # runtime data (kept tracked temporarily for easy sync)
 # backend/notes/
@@ -77,3 +79,6 @@ next-env.d.ts
 .vscode/
 *.swp
 *.swo
+
+# rendered by scripts/render_sample_screenshots.py
+sample-screenshots/

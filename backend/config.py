@@ -25,14 +25,22 @@ PDFS_DIR: Path = DATA_DIR / "pdfs"
 CHATS_DIR: Path = DATA_DIR / "chats"
 NOTES_DIR: Path = DATA_DIR / "notes"
 SNIPPETS_DIR: Path = DATA_DIR / "snippets"
+# One JSON record per processed screenshot: the OCR lines with confidence
+# and boxes, the classification, and the VLM result. It is the readable,
+# re-indexable form of what was in the image, so a store rebuild never has
+# to run OCR again and the user can read what Origami read.
+OCR_DIR: Path = DATA_DIR / "ocr"
 CHROMA_DIR: Path = Path(os.getenv("CHROMA_DIR", str(DATA_DIR / "chroma_data")))
 MODELS_DIR: Path = DATA_DIR / "models"
 USAGE_DIR: Path = DATA_DIR / "usage"
 SAVED_TAGS_FILE: Path = DATA_DIR / "saved_tags.json"
+# The user's collections: the categories screenshots are filed into, each
+# mapped to the note that accumulates its entries.
+COLLECTIONS_FILE: Path = DATA_DIR / "collections.json"
 
 for _dir in (
     SCREENSHOTS_DIR, DIGESTS_DIR, UPLOADS_DIR, PDFS_DIR,
-    CHATS_DIR, NOTES_DIR, SNIPPETS_DIR, CHROMA_DIR, MODELS_DIR, USAGE_DIR,
+    CHATS_DIR, NOTES_DIR, SNIPPETS_DIR, OCR_DIR, CHROMA_DIR, MODELS_DIR, USAGE_DIR,
 ):
     _dir.mkdir(parents=True, exist_ok=True)
 
@@ -55,6 +63,35 @@ OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "deepseek-r1:8b")
 OLLAMA_VLM_MODEL: str = os.getenv("OLLAMA_VLM_MODEL", "qwen2.5-vl:7b")
 OLLAMA_TIMEOUT: float = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+# How long Ollama keeps the VLM resident after a call. A batch of
+# screenshots arrives seconds apart, and reloading a 7B model between them
+# costs more than the caption itself.
+OLLAMA_KEEP_ALIVE: str = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
+
+# ── Screenshots: OCR, classification, vision ─────────────────────
+# Which on-device OCR engine reads screenshot text. "auto" prefers the
+# macOS Vision framework and falls back to RapidOCR when the optional
+# ocr-fallback extra is installed; "off" leaves transcription to the VLM,
+# which is the slow pre-OCR behaviour.
+OCR_ENGINE: str = os.getenv("ORIGAMI_OCR_ENGINE", "auto")
+# OCR lines shorter than this never reach the embedder. PRODUCT_DIRECTION
+# "keep the bytes, fix the ranking": the line is still in the sidecar and
+# the image, it is just not worth a vector.
+OCR_MIN_LINE_CHARS: int = int(os.getenv("ORIGAMI_OCR_MIN_LINE_CHARS", "3"))
+# Longest side, in pixels, of the image sent to the VLM. A retina iPhone
+# capture is 1179x2556; the caption does not need the pixels the OCR did.
+VLM_MAX_SIDE: int = int(os.getenv("ORIGAMI_VLM_MAX_SIDE", "1280"))
+# Run the VLM caption pass after OCR has already indexed the screenshot.
+# Off, the pipeline is OCR plus the local classifier and never touches
+# Ollama; the caption segment is simply absent.
+VLM_ENRICH: bool = os.getenv("ORIGAMI_VLM_ENRICH", "1") not in ("", "0", "false", "False")
+# Below this combined score the local classifier files a screenshot in the
+# inbox rather than guessing. See services/classify_screenshot.py for how
+# the score is built.
+CLASSIFY_MIN_CONFIDENCE: float = float(os.getenv("ORIGAMI_CLASSIFY_MIN_CONFIDENCE", "0.35"))
+# Process a screenshot as soon as it is uploaded rather than waiting for an
+# explicit /screenshots/process call.
+SCREENSHOT_AUTO_PROCESS: bool = os.getenv("ORIGAMI_SCREENSHOT_AUTO_PROCESS", "1") not in ("", "0", "false", "False")
 
 # ── Embeddings ───────────────────────────────────────────────────
 EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "bge-small-en-v1.5")
